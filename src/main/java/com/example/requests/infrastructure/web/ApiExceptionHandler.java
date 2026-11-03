@@ -1,6 +1,7 @@
 package com.example.requests.infrastructure.web;
 
 import com.example.requests.domain.exception.ContentNotEditableException;
+import com.example.requests.domain.exception.DomainException;
 import com.example.requests.domain.exception.DomainValidationException;
 import com.example.requests.domain.exception.InvalidStateTransitionException;
 import com.example.requests.domain.exception.RequestNotFoundException;
@@ -74,6 +75,15 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 	ProblemDetail concurrentModification(OptimisticLockingFailureException ex) {
 		return problem(HttpStatus.CONFLICT, "Concurrent modification",
 				"The request was modified by another operation; reload it and retry");
+	}
+
+	/**
+	 * 422 for any business rule violation without a dedicated handler. Spring always prefers the most
+	 * specific handler, so this only applies to domain exceptions that are not mapped above.
+	 */
+	@ExceptionHandler(DomainException.class)
+	ProblemDetail businessRuleViolation(DomainException ex) {
+		return problem(HttpStatus.UNPROCESSABLE_CONTENT, "Business rule violation", ex.getMessage());
 	}
 
 	/**

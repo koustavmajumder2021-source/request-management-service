@@ -80,7 +80,8 @@ Base path: `/api/requests`
 | `GET` | `/{id}/history` | | `200` | `404` |
 
 `400` invalid input · `404` unknown request · `409` action not allowed in the current state,
-content not editable, or a concurrent modification.
+content not editable, or a concurrent modification · `422` any other business rule violation
+(fallback, so a newly added domain error never surfaces as a `500`).
 
 Errors use RFC 9457 problem details:
 

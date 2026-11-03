@@ -63,7 +63,7 @@ public final class Request {
 	 */
 	public void editContent(String newContent, RequestLifecycle lifecycle, Instant now) {
 		if (!lifecycle.isContentEditable(state)) {
-			throw new ContentNotEditableException(id, state);
+			throw new ContentNotEditableException(state);
 		}
 		this.content = requireText(newContent, "content", MAX_CONTENT_LENGTH);
 		this.updatedAt = now;

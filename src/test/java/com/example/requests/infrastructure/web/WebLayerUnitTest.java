@@ -1,5 +1,6 @@
 package com.example.requests.infrastructure.web;
 
+import com.example.requests.domain.exception.DomainException;
 import com.example.requests.domain.exception.DomainValidationException;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -28,6 +29,16 @@ class WebLayerUnitTest {
 
 		assertThat(problem.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST.value());
 		assertThat(problem.getProperties()).containsEntry("errors", Map.of("reason", "reason must not be blank"));
+	}
+
+	@Test
+	void unmappedDomainExceptionIs422() {
+		var problem = new ApiExceptionHandler().businessRuleViolation(new DomainException("quota exceeded") {
+		});
+
+		assertThat(problem.getStatus()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT.value());
+		assertThat(problem.getTitle()).isEqualTo("Business rule violation");
+		assertThat(problem.getDetail()).isEqualTo("quota exceeded");
 	}
 
 	@Test

@@ -6,8 +6,8 @@ public class ContentNotEditableException extends DomainException {
 
 	private final RequestState currentState;
 
-	public ContentNotEditableException(Long id, RequestState currentState) {
-		super("Content of request " + id + " cannot be edited in state " + currentState);
+	public ContentNotEditableException(RequestState currentState) {
+		super("Content cannot be edited in state " + currentState);
 		this.currentState = currentState;
 	}
 

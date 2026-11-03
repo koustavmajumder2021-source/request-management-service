@@ -130,7 +130,8 @@ class RequestTest {
 
 			assertThatThrownBy(() -> request.editContent("new body", lifecycle, LATER))
 					.isInstanceOfSatisfying(ContentNotEditableException.class,
-							ex -> assertThat(ex.currentState()).isEqualTo(state));
+							ex -> assertThat(ex.currentState()).isEqualTo(state))
+					.hasMessage("Content cannot be edited in state " + state);
 			assertThat(request.content()).isEqualTo("content");
 			assertThat(request.updatedAt()).isEqualTo(CREATED_AT);
 		}

@@ -178,6 +178,7 @@ class RequestApiIntegrationTest {
 			editContent(id, "Updated")
 					.andExpect(status().isConflict())
 					.andExpect(jsonPath("$.title").value("Content not editable"))
+					.andExpect(jsonPath("$.detail").value("Content cannot be edited in state ACCEPTED"))
 					.andExpect(jsonPath("$.currentState").value("ACCEPTED"));
 			mvc.perform(get(BASE + "/" + id)).andExpect(jsonPath("$.content").value("Body"));
 		}
