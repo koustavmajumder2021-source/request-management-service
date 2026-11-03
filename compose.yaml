@@ -1,0 +1,10 @@
+# Local PostgreSQL for the "postgres" profile: docker compose up -d
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: requests
+      POSTGRES_USER: requests
+      POSTGRES_PASSWORD: requests
+    ports:
+      - "5432:5432"

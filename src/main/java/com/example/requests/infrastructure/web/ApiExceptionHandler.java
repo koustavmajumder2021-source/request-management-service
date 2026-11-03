@@ -1,0 +1,92 @@
+package com.example.requests.infrastructure.web;
+
+import com.example.requests.domain.exception.ContentNotEditableException;
+import com.example.requests.domain.exception.DomainValidationException;
+import com.example.requests.domain.exception.InvalidStateTransitionException;
+import com.example.requests.domain.exception.RequestNotFoundException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * Maps exceptions to RFC 9457 problem details. Framework errors are handled by the base class.
+ */
+@RestControllerAdvice
+class ApiExceptionHandler extends ResponseEntityExceptionHandler {
+
+	@ExceptionHandler(RequestNotFoundException.class)
+	ProblemDetail notFound(RequestNotFoundException ex) {
+		return problem(HttpStatus.NOT_FOUND, "Request not found", ex.getMessage());
+	}
+
+	@ExceptionHandler(InvalidStateTransitionException.class)
+	ProblemDetail invalidTransition(InvalidStateTransitionException ex) {
+		ProblemDetail problem = problem(HttpStatus.CONFLICT, "Invalid state transition", ex.getMessage());
+		problem.setProperty("currentState", ex.currentState());
+		problem.setProperty("action", ex.action());
+		return problem;
+	}
+
+	@ExceptionHandler(ContentNotEditableException.class)
+	ProblemDetail notEditable(ContentNotEditableException ex) {
+		ProblemDetail problem = problem(HttpStatus.CONFLICT, "Content not editable", ex.getMessage());
+		problem.setProperty("currentState", ex.currentState());
+		return problem;
+	}
+
+	@ExceptionHandler(DomainValidationException.class)
+	ProblemDetail domainValidation(DomainValidationException ex) {
+		ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "Validation failed", ex.getMessage());
+		problem.setProperty("errors", Map.of(ex.field(), ex.getMessage()));
+		return problem;
+	}
+
+	@ExceptionHandler(OptimisticLockingFailureException.class)
+	ProblemDetail concurrentModification(OptimisticLockingFailureException ex) {
+		return problem(HttpStatus.CONFLICT, "Concurrent modification",
+				"The request was modified by another operation; reload it and retry");
+	}
+
+	@Override
+	protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException ex,
+			HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+		Map<String, String> errors = new LinkedHashMap<>();
+		for (FieldError error : ex.getBindingResult().getFieldErrors()) {
+			errors.putIfAbsent(error.getField(), error.getDefaultMessage());
+		}
+		ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "Validation failed", "Request body is invalid");
+		problem.setProperty("errors", errors);
+		return ResponseEntity.badRequest().body(problem);
+	}
+
+	@Override
+	protected ResponseEntity<Object> handleHandlerMethodValidationException(
+			HandlerMethodValidationException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+		Map<String, String> errors = new LinkedHashMap<>();
+		ex.getParameterValidationResults().forEach(result -> errors.putIfAbsent(
+				result.getMethodParameter().getParameterName(),
+				result.getResolvableErrors().get(0).getDefaultMessage()));
+		ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "Validation failed", "Request parameters are invalid");
+		problem.setProperty("errors", errors);
+		return ResponseEntity.badRequest().body(problem);
+	}
+
+	private static ProblemDetail problem(HttpStatus status, String title, String detail) {
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
+		problem.setTitle(title);
+		return problem;
+	}
+}

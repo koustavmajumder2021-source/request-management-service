@@ -1,0 +1,140 @@
+package com.example.requests.domain;
+
+import com.example.requests.domain.exception.ContentNotEditableException;
+import com.example.requests.domain.exception.DomainValidationException;
+import com.example.requests.domain.port.PublicationNumberGenerator;
+
+import java.time.Instant;
+import java.util.Objects;
+
+/**
+ * Request aggregate. Owns all lifecycle invariants; has no framework dependencies.
+ */
+public final class Request {
+
+	public static final int MAX_NAME_LENGTH = 255;
+	public static final int MAX_CONTENT_LENGTH = 10_000;
+	public static final int MAX_REASON_LENGTH = 1_000;
+
+	private final Long id;
+	private final String name;
+	private String content;
+	private RequestState state;
+	private Long publicationNumber;
+	private String reason;
+	private final Instant createdAt;
+	private Instant updatedAt;
+
+	private Request(Long id, String name, String content, RequestState state, Long publicationNumber,
+			String reason, Instant createdAt, Instant updatedAt) {
+		this.id = id;
+		this.name = name;
+		this.content = content;
+		this.state = state;
+		this.publicationNumber = publicationNumber;
+		this.reason = reason;
+		this.createdAt = createdAt;
+		this.updatedAt = updatedAt;
+	}
+
+	public static Request create(String name, String content, RequestLifecycle lifecycle, Instant now) {
+		return new Request(null, requireText(name, "name", MAX_NAME_LENGTH).strip(),
+				requireText(content, "content", MAX_CONTENT_LENGTH), lifecycle.initialState(), null, null, now, now);
+	}
+
+	/** Rehydrates a persisted request; invariants are not re-validated. */
+	public static Request restore(long id, String name, String content, RequestState state, Long publicationNumber,
+			String reason, Instant createdAt, Instant updatedAt) {
+		return new Request(id, name, content, state, publicationNumber, reason, createdAt, updatedAt);
+	}
+
+	public void editContent(String newContent, RequestLifecycle lifecycle, Instant now) {
+		if (!lifecycle.isContentEditable(state)) {
+			throw new ContentNotEditableException(id, state);
+		}
+		this.content = requireText(newContent, "content", MAX_CONTENT_LENGTH);
+		this.updatedAt = now;
+	}
+
+	/**
+	 * Applies {@code action} and returns the audit entry. The publication number is drawn
+	 * only after the transition is validated, so a refused publish never consumes one.
+	 */
+	public StateChange apply(RequestAction action, String reason, RequestLifecycle lifecycle,
+			PublicationNumberGenerator publicationNumbers, Instant now) {
+		RequestState from = state;
+		RequestState to = lifecycle.next(from, action);
+		String normalizedReason = normalizeReason(action, reason);
+		if (to == RequestState.PUBLISHED) {
+			this.publicationNumber = publicationNumbers.next();
+		}
+		this.state = to;
+		this.reason = normalizedReason;
+		this.updatedAt = now;
+		return new StateChange(id, action, from, to, normalizedReason, now);
+	}
+
+	private static String normalizeReason(RequestAction action, String reason) {
+		boolean blank = reason == null || reason.isBlank();
+		if (blank) {
+			if (action.isReasonRequired()) {
+				throw new DomainValidationException("reason", "is required to " + action.name().toLowerCase());
+			}
+			return null;
+		}
+		return requireText(reason, "reason", MAX_REASON_LENGTH).strip();
+	}
+
+	private static String requireText(String value, String field, int maxLength) {
+		if (value == null || value.isBlank()) {
+			throw new DomainValidationException(field, "must not be blank");
+		}
+		if (value.length() > maxLength) {
+			throw new DomainValidationException(field, "must be at most " + maxLength + " characters");
+		}
+		return value;
+	}
+
+	public Long id() {
+		return id;
+	}
+
+	public String name() {
+		return name;
+	}
+
+	public String content() {
+		return content;
+	}
+
+	public RequestState state() {
+		return state;
+	}
+
+	public Long publicationNumber() {
+		return publicationNumber;
+	}
+
+	/** Reason supplied with the transition into the current state, if any. */
+	public String reason() {
+		return reason;
+	}
+
+	public Instant createdAt() {
+		return createdAt;
+	}
+
+	public Instant updatedAt() {
+		return updatedAt;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		return this == o || (o instanceof Request other && id != null && id.equals(other.id));
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hashCode(id);
+	}
+}
