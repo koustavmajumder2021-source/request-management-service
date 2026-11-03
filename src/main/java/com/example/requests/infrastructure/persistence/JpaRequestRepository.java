@@ -24,9 +24,13 @@ class JpaRequestRepository implements RequestRepository {
 		this.jpa = jpa;
 	}
 
+	/**
+	 * Copies the domain state onto the managed entity instead of merging a detached copy, so the version
+	 * read when the request was loaded is the one checked on flush. A concurrent change therefore fails with
+	 * {@link org.springframework.dao.OptimisticLockingFailureException} rather than being overwritten.
+	 */
 	@Override
 	public Request save(Request request) {
-		// Update the managed instance so the version read at load time is the one checked on flush.
 		RequestEntity entity = request.id() == null
 				? new RequestEntity()
 				: jpa.findById(request.id()).orElseThrow(() -> new IllegalStateException(
@@ -46,6 +50,10 @@ class JpaRequestRepository implements RequestRepository {
 		return jpa.findById(id).map(JpaRequestRepository::toDomain);
 	}
 
+	/**
+	 * Combines the non-null criteria with AND. The name criterion is a case-insensitive {@code LIKE}
+	 * with any wildcard characters in the input escaped.
+	 */
 	@Override
 	public PageResult<Request> search(RequestFilter filter, PageQuery pageQuery) {
 		Page<RequestEntity> page = jpa.findAll(toSpecification(filter),
@@ -66,6 +74,9 @@ class JpaRequestRepository implements RequestRepository {
 		return Specification.allOf(criteria);
 	}
 
+	/**
+	 * Escapes {@code LIKE} wildcards so that user input is matched literally.
+	 */
 	private static String escapeLike(String value) {
 		return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
 	}

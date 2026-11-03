@@ -43,6 +43,11 @@ class RequestController {
 		this.pagination = pagination;
 	}
 
+	/**
+	 * Creates a request in state CREATED.
+	 *
+	 * @return 201 with a {@code Location} header pointing to the new request
+	 */
 	@PostMapping
 	ResponseEntity<RequestResponse> create(@Valid @RequestBody CreateRequestBody body) {
 		Request created = service.create(body.name(), body.content());
@@ -51,11 +56,22 @@ class RequestController {
 				.body(toResponse(created));
 	}
 
+	/**
+	 * Returns a single request, or 404 if it does not exist.
+	 */
 	@GetMapping("/{id}")
 	RequestResponse get(@PathVariable long id) {
 		return toResponse(service.get(id));
 	}
 
+	/**
+	 * Lists requests, optionally filtered.
+	 *
+	 * @param name  case-insensitive substring of the name
+	 * @param state exact state
+	 * @param page  zero-based page index
+	 * @param size  page size; defaults to {@code app.pagination.default-size}, capped at {@code app.pagination.max-size}
+	 */
 	@GetMapping
 	PageResponse<RequestResponse> search(
 			@RequestParam(required = false) String name,
@@ -67,37 +83,57 @@ class RequestController {
 				.map(this::toResponse));
 	}
 
+	/**
+	 * Replaces the content. Allowed only in CREATED and VERIFIED, otherwise 409.
+	 */
 	@PatchMapping("/{id}")
 	RequestResponse editContent(@PathVariable long id, @Valid @RequestBody UpdateContentBody body) {
 		return toResponse(service.editContent(id, body.content()));
 	}
 
+	/**
+	 * CREATED → VERIFIED.
+	 */
 	@PostMapping("/{id}/verify")
 	RequestResponse verify(@PathVariable long id) {
 		return transition(id, RequestAction.VERIFY, null);
 	}
 
+	/**
+	 * VERIFIED → ACCEPTED.
+	 */
 	@PostMapping("/{id}/accept")
 	RequestResponse accept(@PathVariable long id) {
 		return transition(id, RequestAction.ACCEPT, null);
 	}
 
+	/**
+	 * ACCEPTED → PUBLISHED, assigning the publication number.
+	 */
 	@PostMapping("/{id}/publish")
 	RequestResponse publish(@PathVariable long id) {
 		return transition(id, RequestAction.PUBLISH, null);
 	}
 
+	/**
+	 * VERIFIED or ACCEPTED → REJECTED. A reason is mandatory.
+	 */
 	@PostMapping("/{id}/reject")
 	RequestResponse reject(@PathVariable long id, @Valid @RequestBody ReasonBody body) {
 		return transition(id, RequestAction.REJECT, body.reason());
 	}
 
-	/** Soft delete: the request stays queryable in state DELETED. */
+	/**
+	 * CREATED → DELETED. A reason is mandatory. This is a soft delete: the request remains queryable.
+	 */
 	@PostMapping("/{id}/delete")
 	RequestResponse delete(@PathVariable long id, @Valid @RequestBody ReasonBody body) {
 		return transition(id, RequestAction.DELETE, body.reason());
 	}
 
+	/**
+	 * Returns the audit log of the request, oldest first.
+	 */
 	@GetMapping("/{id}/history")
 	List<StateChangeResponse> history(@PathVariable long id) {
 		return service.history(id).stream().map(StateChangeResponse::from).toList();

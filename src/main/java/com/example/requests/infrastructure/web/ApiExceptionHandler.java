@@ -27,11 +27,17 @@ import java.util.Map;
 @RestControllerAdvice
 class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
+	/**
+	 * 404 for an unknown request id.
+	 */
 	@ExceptionHandler(RequestNotFoundException.class)
 	ProblemDetail notFound(RequestNotFoundException ex) {
 		return problem(HttpStatus.NOT_FOUND, "Request not found", ex.getMessage());
 	}
 
+	/**
+	 * 409 for an action the state diagram does not allow; includes the current state and the action.
+	 */
 	@ExceptionHandler(InvalidStateTransitionException.class)
 	ProblemDetail invalidTransition(InvalidStateTransitionException ex) {
 		ProblemDetail problem = problem(HttpStatus.CONFLICT, "Invalid state transition", ex.getMessage());
@@ -40,6 +46,9 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 		return problem;
 	}
 
+	/**
+	 * 409 for a content edit outside CREATED and VERIFIED.
+	 */
 	@ExceptionHandler(ContentNotEditableException.class)
 	ProblemDetail notEditable(ContentNotEditableException ex) {
 		ProblemDetail problem = problem(HttpStatus.CONFLICT, "Content not editable", ex.getMessage());
@@ -47,6 +56,10 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 		return problem;
 	}
 
+	/**
+	 * 400 for input rejected by the domain. Bean Validation normally catches invalid input first;
+	 * this covers rules only the domain knows.
+	 */
 	@ExceptionHandler(DomainValidationException.class)
 	ProblemDetail domainValidation(DomainValidationException ex) {
 		ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, "Validation failed", ex.getMessage());
@@ -54,12 +67,18 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 		return problem;
 	}
 
+	/**
+	 * 409 when another transaction changed the request first; the client can reload and retry.
+	 */
 	@ExceptionHandler(OptimisticLockingFailureException.class)
 	ProblemDetail concurrentModification(OptimisticLockingFailureException ex) {
 		return problem(HttpStatus.CONFLICT, "Concurrent modification",
 				"The request was modified by another operation; reload it and retry");
 	}
 
+	/**
+	 * 400 with one message per invalid field of the request body.
+	 */
 	@Override
 	protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException ex,
 			HttpHeaders headers, HttpStatusCode status, WebRequest request) {
@@ -72,6 +91,9 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 		return ResponseEntity.badRequest().body(problem);
 	}
 
+	/**
+	 * 400 with one message per invalid request parameter.
+	 */
 	@Override
 	protected ResponseEntity<Object> handleHandlerMethodValidationException(
 			HandlerMethodValidationException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {

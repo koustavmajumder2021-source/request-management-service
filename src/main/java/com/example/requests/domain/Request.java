@@ -2,6 +2,7 @@ package com.example.requests.domain;
 
 import com.example.requests.domain.exception.ContentNotEditableException;
 import com.example.requests.domain.exception.DomainValidationException;
+import com.example.requests.domain.exception.InvalidStateTransitionException;
 import com.example.requests.domain.port.PublicationNumberGenerator;
 
 import java.time.Instant;
@@ -37,6 +38,12 @@ public final class Request {
 		this.updatedAt = updatedAt;
 	}
 
+	/**
+	 * Creates a new, not yet persisted request in the lifecycle's initial state.
+	 * The name is trimmed; the content is stored as given.
+	 *
+	 * @throws DomainValidationException if the name or content is blank or exceeds its maximum length
+	 */
 	public static Request create(String name, String content, RequestLifecycle lifecycle, Instant now) {
 		return new Request(null, requireText(name, "name", MAX_NAME_LENGTH).strip(),
 				requireText(content, "content", MAX_CONTENT_LENGTH), lifecycle.initialState(), null, null, now, now);
@@ -48,6 +55,12 @@ public final class Request {
 		return new Request(id, name, content, state, publicationNumber, reason, createdAt, updatedAt);
 	}
 
+	/**
+	 * Replaces the content. This is not a state change.
+	 *
+	 * @throws ContentNotEditableException if the lifecycle does not allow editing in the current state
+	 * @throws DomainValidationException   if the new content is blank or too long
+	 */
 	public void editContent(String newContent, RequestLifecycle lifecycle, Instant now) {
 		if (!lifecycle.isContentEditable(state)) {
 			throw new ContentNotEditableException(id, state);
@@ -57,8 +70,16 @@ public final class Request {
 	}
 
 	/**
-	 * Applies {@code action} and returns the audit entry. The publication number is drawn
-	 * only after the transition is validated, so a refused publish never consumes one.
+	 * Applies a lifecycle action to this request.
+	 * <p>
+	 * The transition is validated first, then the reason. Only when both are valid is the state changed and,
+	 * on publication, a number drawn from {@code publicationNumbers}. A refused action therefore leaves the
+	 * request untouched and never consumes a publication number.
+	 *
+	 * @param reason mandatory for actions that require one, optional otherwise; stored trimmed
+	 * @return the audit entry describing the change
+	 * @throws InvalidStateTransitionException if the action is not allowed in the current state
+	 * @throws DomainValidationException       if a required reason is missing or a reason is too long
 	 */
 	public StateChange apply(RequestAction action, String reason, RequestLifecycle lifecycle,
 			PublicationNumberGenerator publicationNumbers, Instant now) {
@@ -111,6 +132,9 @@ public final class Request {
 		return state;
 	}
 
+	/**
+	 * @return the publication number, or {@code null} until the request is published
+	 */
 	public Long publicationNumber() {
 		return publicationNumber;
 	}

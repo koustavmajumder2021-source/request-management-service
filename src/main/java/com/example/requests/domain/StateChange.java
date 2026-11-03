@@ -15,6 +15,9 @@ public record StateChange(
 		String reason,
 		Instant occurredAt) {
 
+	/**
+	 * @return the CREATE entry for a request that has just been persisted
+	 */
 	public static StateChange creationOf(Request request) {
 		return new StateChange(request.id(), RequestAction.CREATE, null, request.state(), null, request.createdAt());
 	}

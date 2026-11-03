@@ -27,6 +27,10 @@ class SequencePublicationNumberGenerator implements PublicationNumberGenerator {
 				.getSequenceNextValString(SEQUENCE_NAME);
 	}
 
+	/**
+	 * @return the next value of {@code publication_number_seq}; a value drawn in a transaction that later
+	 *         rolls back is not reused
+	 */
 	@Override
 	public long next() {
 		return ((Number) entityManager.createNativeQuery(nextValueSql).getSingleResult()).longValue();
