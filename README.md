@@ -23,7 +23,7 @@ Judgement calls not covered by the specification are listed under [Assumptions](
 ## Tech stack
 
 Java 17, Spring Boot 4.1, Spring Data JPA (Hibernate 7), Flyway, PostgreSQL / H2,
-springdoc-openapi, JUnit 5, AssertJ, JaCoCo.
+springdoc-openapi, JUnit, AssertJ, Mockito, JaCoCo.
 
 ## Running
 
@@ -57,7 +57,7 @@ The build fails if line coverage drops below 90 % (currently ~99 %).
 | Layer | Test | Approach |
 |---|---|---|
 | Domain | `RequestLifecycleTest`, `RequestTest`, `ValueObjectsTest` | Plain JUnit, no Spring. All 36 state/action combinations are checked against the diagram. |
-| Application | `RequestServiceTest` | In-memory implementations of the ports instead of mocks. |
+| Application | `RequestServiceTest` | Mockito mocks of the ports: verifies orchestration (save before audit, nothing written on failure) and simulates infrastructure failures such as optimistic-lock conflicts. |
 | Persistence | `PersistenceAdaptersTest` | `@DataJpaTest` against the real Flyway schema, including DB constraints. |
 | API | `RequestApiIntegrationTest` | Full stack through MockMvc: status codes, validation, paging, history. |
 | Concurrency | `ConcurrencyIntegrationTest` | Parallel publications get unique numbers; racing transitions on one request have exactly one winner. |
