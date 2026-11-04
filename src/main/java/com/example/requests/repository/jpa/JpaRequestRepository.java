@@ -1,10 +1,13 @@
 package com.example.requests.repository.jpa;
 
+import com.example.requests.exception.DuplicateRequestNameException;
 import com.example.requests.model.PageQuery;
 import com.example.requests.model.PageResult;
 import com.example.requests.model.Request;
 import com.example.requests.model.RequestFilter;
 import com.example.requests.repository.RequestRepository;
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -13,6 +16,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 @Repository
@@ -42,12 +46,24 @@ class JpaRequestRepository implements RequestRepository {
 		entity.setPublicationNumber(request.publicationNumber());
 		entity.setCreatedAt(request.createdAt());
 		entity.setUpdatedAt(request.updatedAt());
-		return toDomain(jpa.saveAndFlush(entity));
+		try {
+			return toDomain(jpa.saveAndFlush(entity));
+		}
+		catch (DataIntegrityViolationException ex) {
+			if (violates(ex, RequestEntity.UNIQUE_ACTIVE_NAME)) {
+				throw new DuplicateRequestNameException(request.name());
+			}
+			throw ex;
+		}
 	}
 
+	/**
+	 * The newest request with this name: the current one if the name is in use, otherwise the most
+	 * recently deleted one. A name can only be reused after deletion, so the newest is always current.
+	 */
 	@Override
-	public Optional<Request> findById(long id) {
-		return jpa.findById(id).map(JpaRequestRepository::toDomain);
+	public Optional<Request> findByName(String name) {
+		return jpa.findFirstByNameOrderByIdDesc(name).map(JpaRequestRepository::toDomain);
 	}
 
 	/**
@@ -72,6 +88,20 @@ class JpaRequestRepository implements RequestRepository {
 			criteria.add((root, query, cb) -> cb.equal(root.get("state"), filter.state()));
 		}
 		return Specification.allOf(criteria);
+	}
+
+	/**
+	 * Relying on the database constraint (instead of checking first) keeps uniqueness correct when two
+	 * requests with the same name are created concurrently.
+	 */
+	private static boolean violates(DataIntegrityViolationException ex, String constraint) {
+		for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+			if (cause instanceof ConstraintViolationException violation && violation.getConstraintName() != null
+					&& violation.getConstraintName().toLowerCase(Locale.ROOT).contains(constraint)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

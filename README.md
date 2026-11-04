@@ -69,19 +69,22 @@ Base path: `/api/requests`
 
 | Method | Path | Body | Success | Errors |
 |---|---|---|---|---|
-| `POST` | `/` | `{"name", "content"}` | `201` | `400` |
-| `GET` | `/{id}` | | `200` | `404` |
+| `POST` | `/` | `{"name", "content"}` | `201` | `400`, `409` |
+| `GET` | `/{name}` | | `200` | `404` |
 | `GET` | `/?name=&state=&page=&size=` | | `200` page | `400` |
-| `PATCH` | `/{id}` | `{"content"}` | `200` | `400`, `404`, `409` |
-| `POST` | `/{id}/verify` | | `200` | `404`, `409` |
-| `POST` | `/{id}/accept` | | `200` | `404`, `409` |
-| `POST` | `/{id}/publish` | | `200` | `404`, `409` |
-| `POST` | `/{id}/reject` | `{"reason"}` | `200` | `400`, `404`, `409` |
-| `POST` | `/{id}/delete` | `{"reason"}` | `200` | `400`, `404`, `409` |
-| `GET` | `/{id}/history` | | `200` | `404` |
+| `PATCH` | `/{name}` | `{"content"}` | `200` | `400`, `404`, `409` |
+| `POST` | `/{name}/verify` | | `200` | `404`, `409` |
+| `POST` | `/{name}/accept` | | `200` | `404`, `409` |
+| `POST` | `/{name}/publish` | | `200` | `404`, `409` |
+| `POST` | `/{name}/reject` | `{"reason"}` | `200` | `400`, `404`, `409` |
+| `POST` | `/{name}/delete` | `{"reason"}` | `200` | `400`, `404`, `409` |
+| `GET` | `/{name}/history` | | `200` | `404` |
 
-`400` invalid input · `404` unknown request · `409` action not allowed in the current state,
-content not editable, or a concurrent modification · `422` any other business rule violation
+Requests are addressed by **name**, URL-encoded in the path (`Solar panels` → `Solar%20panels`).
+The numeric `id` is the internal database key; it is still returned in responses.
+
+`400` invalid input · `404` unknown request name · `409` name already in use, action not allowed in
+the current state, content not editable, or a concurrent modification · `422` any other business rule violation
 (fallback, so a newly added domain error never surfaces as a `500`).
 
 Errors use RFC 9457 problem details:
@@ -92,7 +95,7 @@ Errors use RFC 9457 problem details:
   "title": "Invalid state transition",
   "status": 409,
   "detail": "Cannot publish a request in state CREATED",
-  "instance": "/api/requests/1/publish",
+  "instance": "/api/requests/Solar%20panels/publish",
   "currentState": "CREATED",
   "action": "PUBLISH"
 }
@@ -103,10 +106,10 @@ Example:
 ```bash
 curl -s -X POST localhost:8080/api/requests -H 'Content-Type: application/json' \
      -d '{"name":"Solar panels","content":"Install 20 panels on the roof"}'
-curl -s -X POST localhost:8080/api/requests/1/verify
-curl -s -X POST localhost:8080/api/requests/1/accept
-curl -s -X POST localhost:8080/api/requests/1/publish
-curl -s localhost:8080/api/requests/1/history
+curl -s -X POST localhost:8080/api/requests/Solar%20panels/verify
+curl -s -X POST localhost:8080/api/requests/Solar%20panels/accept
+curl -s -X POST localhost:8080/api/requests/Solar%20panels/publish
+curl -s localhost:8080/api/requests/Solar%20panels/history
 curl -s 'localhost:8080/api/requests?name=solar&state=PUBLISHED&page=0&size=10'
 ```
 
@@ -168,7 +171,7 @@ requirements (no-arg constructor, mutable fields, `@Version`) don't leak into th
 state or arrow is a one-line change. A state-machine library (e.g. Spring Statemachine) would add
 more complexity than six transitions justify.
 
-**One endpoint per action.** `POST /{id}/verify`, `/reject`, … map one-to-one to the arrows of the
+**One endpoint per action.** `POST /{name}/verify`, `/reject`, … map one-to-one to the arrows of the
 diagram, keep reason-bearing actions strongly typed, and make illegal transitions an explicit `409`.
 
 **Publication numbers come from a database sequence.** Values are unique across concurrent
@@ -238,7 +241,7 @@ each.
 2. **`PUBLISHED`, `REJECTED` and `DELETED` are terminal.** The diagram has no arrows leaving them.
 3. **Delete is a soft delete.** The diagram models `DELETED` as a state, so a deleted request remains
    readable, appears in listings and keeps its history. Nothing is physically removed; that also
-   keeps the audit log complete. Deletion is exposed as `POST /{id}/delete`, not HTTP `DELETE`,
+   keeps the audit log complete. Deletion is exposed as `POST /{name}/delete`, not HTTP `DELETE`,
    because it carries a mandatory body (the reason), and bodies on `DELETE` are poorly supported by
    clients and proxies.
 4. **Delete is only allowed from `CREATED`, reject only from `VERIFIED` and `ACCEPTED`**, exactly as
@@ -247,24 +250,36 @@ each.
 ### Data and validation
 
 5. **Name** is required and at most 255 characters. It is stored exactly as sent (not trimmed);
-   a whitespace-only name counts as blank. Names are **not unique**: the
-   specification doesn't ask for it, and two requests can legitimately share a name.
-6. **Name is immutable.** The specification only allows editing the body. A `name` sent to the edit
-   endpoint is ignored.
-7. **Content** ("body") is required, at most 10,000 characters, and stored as sent. Whitespace is
+   a whitespace-only name counts as blank.
+6. **Name is the public identifier.** All operations on a single request (read, edit, every
+   transition, history) address it by name, so the name must be usable in a URL path: it must not
+   contain `/`, `\` or `;` and must not be `.` or `..`. Servers treat these specially in paths, so
+   such a request could be created but never reached. The numeric `id` remains the internal key.
+7. **Name is unique among requests that are not deleted**, compared exactly (case-sensitive,
+   including spaces). Creating a duplicate returns `409 Conflict`. Names of rejected and published
+   requests stay reserved; the name of a **deleted** request can be reused. Uniqueness is enforced
+   by a database unique constraint (on an internal `active_name` column that is cleared on
+   deletion), so it also holds when two identical requests are created at the same moment.
+8. **Lookup by name** returns the current request with that name. If the name only belongs to
+   deleted requests, it returns the most recently deleted one, so a deleted request stays readable
+   until its name is reused. After reuse, older deleted requests with that name are still stored and
+   listed by `GET /api/requests`, but can no longer be addressed by name.
+9. **Name is immutable.** Only the content can be edited. A `name` sent to the edit endpoint is
+   ignored.
+10. **Content** ("body") is required, at most 10,000 characters, and stored as sent. Whitespace is
    not trimmed, since it may be meaningful, but whitespace-only content counts as blank.
-8. **Reason** is required (non-blank, at most 1,000 characters, trimmed) for delete and reject. It
+11. **Reason** is required (non-blank, at most 1,000 characters, trimmed) for delete and reject. It
    is stored on the request (the reason for its current state) and in the audit entry.
-9. **Editing content is not a state change**, so it is not written to the audit log. The audit log
+12. **Editing content is not a state change**, so it is not written to the audit log. The audit log
    records state changes, as specified. Content edits are reflected in `updatedAt`.
-10. **Validation order:** an action that isn't allowed in the current state returns `409` even when
+13. **Validation order:** an action that isn't allowed in the current state returns `409` even when
     the reason is also missing. Whether the action is possible at all is the more fundamental error.
 
 ### Publication number
 
-11. **A publication number is separate from the technical id.** It is assigned only on publication,
+14. **A publication number is separate from the technical id.** It is assigned only on publication,
     is unique and increases, and is never changed afterwards.
-12. **Gaps are acceptable.** Numbers come from a database sequence. If a publication transaction
+15. **Gaps are acceptable.** Numbers come from a database sequence. If a publication transaction
     rolls back (e.g. a concurrent modification), its number is not reused. The specification asks
     for a *unique* identifier, not a gap-free one. A gap-free counter would need a single locked
     counter row, forcing every publication to wait in line. Refused publish attempts (wrong state)
@@ -272,47 +287,47 @@ each.
 
 ### Audit log
 
-13. **The audit log records creation and every state transition**, with action, previous state,
+16. **The audit log records creation and every state transition**, with action, previous state,
     new state, reason and timestamp. It is stored in the same transaction as the change, so it is
     complete by construction. Failed attempts are not recorded.
-14. **No actor is recorded.** The specification has no users or authentication; adding a
+17. **No actor is recorded.** The specification has no users or authentication; adding a
     `changedBy` column is straightforward once there is an identity.
-15. **Timestamps are UTC**, taken from an injected `Clock`.
+18. **Timestamps are UTC**, taken from an injected `Clock`.
 
 ### Browsing
 
-16. **Name filter** is a case-insensitive "contains" match. SQL wildcard characters in the filter
+19. **Name filter** is a case-insensitive "contains" match. SQL wildcard characters in the filter
     (`%`, `_`) are matched literally. A blank filter means "no filter".
-17. **State filter** is an exact match on one state. Unknown values return `400`.
-18. Filters can be combined (logical AND).
-19. **Paging is zero-based.** The default page size is 10 (configurable). Sizes above the configured
+20. **State filter** is an exact match on one state. Unknown values return `400`.
+21. Filters can be combined (logical AND).
+22. **Paging is zero-based.** The default page size is 10 (configurable). Sizes above the configured
     maximum (100) are capped, not rejected. `size < 1` and `page < 0` return `400`. A page beyond
     the end returns an empty list with correct totals, not an error.
-20. **Results are ordered by id (creation order).** A stable order is required for paging to be
+23. **Results are ordered by id (creation order).** A stable order is required for paging to be
     consistent; the specification doesn't define one.
 
 ### Concurrency
 
-21. **Concurrent changes to the same request** are resolved with optimistic locking. Exactly one
+24. **Concurrent changes to the same request** are resolved with optimistic locking. Exactly one
     succeeds; the others receive `409 Concurrent modification` and may retry after reloading.
     Clients cannot send an expected version (`If-Match`) because the specification doesn't
     require it; it's listed under possible extensions.
 
 ### Technical
 
-22. **Database:** PostgreSQL is the target. H2 in PostgreSQL compatibility mode is the default for
+25. **Database:** PostgreSQL is the target. H2 in PostgreSQL compatibility mode is the default for
     running without any setup. It is file-based (`./data/`, git-ignored, so no database is
     submitted) rather than in-memory: an in-memory database would lose the publication-number
     sequence on restart and could then issue the same number twice. Tests use a separate in-memory
     H2 database so they stay fast and isolated. The schema is generated by Hibernate and is identical
     everywhere. Testcontainers would allow testing against real PostgreSQL but requires Docker on the
     build machine, which the evaluation environment can't be assumed to have.
-23. **No message broker, cache or service split.** No requirement involves asynchronous
+26. **No message broker, cache or service split.** No requirement involves asynchronous
     processing, external consumers, or load beyond what one relational database handles. Each would
     add operational cost and new consistency problems (see [Key decisions](#key-decisions)).
-24. **No authentication or authorization**, since none is specified.
-25. **API documentation** (Swagger UI) is included to make the API easy to evaluate. It is not a GUI
+27. **No authentication or authorization**, since none is specified.
+28. **API documentation** (Swagger UI) is included to make the API easy to evaluate. It is not a GUI
     for the application and can be disabled with `springdoc.swagger-ui.enabled=false`.
-26. **API versioning** is not part of the URL. With a single version and no consumers yet, a prefix
+29. **API versioning** is not part of the URL. With a single version and no consumers yet, a prefix
     would be speculative; a version can be introduced through the path or a media type when
     needed.

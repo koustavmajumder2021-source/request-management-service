@@ -45,25 +45,26 @@ public class RequestServiceImpl implements RequestService {
 	public Request create(String name, String content) {
 		Request saved = requests.save(Request.create(name, content, lifecycle, clock.instant()));
 		stateChangeLog.append(StateChange.creationOf(saved));
+
 		return saved;
 	}
 
 	@Override
 	@Transactional(readOnly = true)
-	public Request get(long id) {
-		return load(id);
+	public Request get(String name) {
+		return load(name);
 	}
 
 	@Override
-	public Request editContent(long id, String content) {
-		Request request = load(id);
+	public Request editContent(String name, String content) {
+		Request request = load(name);
 		request.editContent(content, lifecycle, clock.instant());
 		return requests.save(request);
 	}
 
 	@Override
-	public Request transition(long id, RequestAction action, String reason) {
-		Request request = load(id);
+	public Request transition(String name, RequestAction action, String reason) {
+		Request request = load(name);
 		StateChange change = request.apply(action, reason, lifecycle, publicationNumbers, clock.instant());
 		Request saved = requests.save(request);
 		stateChangeLog.append(change);
@@ -78,12 +79,11 @@ public class RequestServiceImpl implements RequestService {
 
 	@Override
 	@Transactional(readOnly = true)
-	public List<StateChange> history(long id) {
-		load(id);
-		return stateChangeLog.findByRequestId(id);
+	public List<StateChange> history(String name) {
+		return stateChangeLog.findByRequestId(load(name).id());
 	}
 
-	private Request load(long id) {
-		return requests.findById(id).orElseThrow(() -> new RequestNotFoundException(id));
+	private Request load(String name) {
+		return requests.findByName(name).orElseThrow(() -> new RequestNotFoundException(name));
 	}
 }

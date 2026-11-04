@@ -78,6 +78,20 @@ class RequestTest {
 							ex -> assertThat(ex.field()).isEqualTo("content"));
 		}
 
+		@ParameterizedTest
+		@ValueSource(strings = {"a/b", "a\\b", "a;b", ".", ".."})
+		void rejectsNamesThatCannotBeUsedInUrls(String name) {
+			assertThatThrownBy(() -> Request.create(name, "Body", lifecycle, CREATED_AT))
+					.isInstanceOfSatisfying(DomainValidationException.class,
+							ex -> assertThat(ex.field()).isEqualTo("name"));
+		}
+
+		@ParameterizedTest
+		@ValueSource(strings = {"a.b", "...", "Solar panels", "x-y_z 2026", "Ünïcødé"})
+		void acceptsOtherNames(String name) {
+			assertThat(Request.create(name, "Body", lifecycle, CREATED_AT).name()).isEqualTo(name);
+		}
+
 		@Test
 		void acceptsValuesAtMaximumLength() {
 			Request request = Request.create("n".repeat(Request.MAX_NAME_LENGTH),

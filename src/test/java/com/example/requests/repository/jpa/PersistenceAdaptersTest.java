@@ -1,5 +1,6 @@
 package com.example.requests.repository.jpa;
 
+import com.example.requests.exception.DuplicateRequestNameException;
 import com.example.requests.model.PageQuery;
 import com.example.requests.model.PageResult;
 import com.example.requests.model.Request;
@@ -49,7 +50,8 @@ class PersistenceAdaptersTest {
 		Request saved = saveNew("Grant");
 
 		assertThat(saved.id()).isNotNull();
-		assertThat(repository.findById(saved.id())).hasValueSatisfying(loaded -> {
+		assertThat(repository.findByName("Grant")).hasValueSatisfying(loaded -> {
+			assertThat(loaded.id()).isEqualTo(saved.id());
 			assertThat(loaded.name()).isEqualTo("Grant");
 			assertThat(loaded.content()).isEqualTo("Body of Grant");
 			assertThat(loaded.state()).isEqualTo(RequestState.CREATED);
@@ -65,7 +67,7 @@ class PersistenceAdaptersTest {
 
 		repository.save(request);
 
-		assertThat(repository.findById(request.id())).hasValueSatisfying(loaded -> {
+		assertThat(repository.findByName("Grant")).hasValueSatisfying(loaded -> {
 			assertThat(loaded.state()).isEqualTo(RequestState.DELETED);
 			assertThat(loaded.reason()).isEqualTo("duplicate");
 			assertThat(loaded.updatedAt()).isEqualTo(NOW.plus(1, ChronoUnit.HOURS));
@@ -80,8 +82,52 @@ class PersistenceAdaptersTest {
 	}
 
 	@Test
-	void findByIdOfUnknownRequestIsEmpty() {
-		assertThat(repository.findById(987_654L)).isEmpty();
+	void findByNameOfUnknownRequestIsEmpty() {
+		assertThat(repository.findByName("does-not-exist")).isEmpty();
+	}
+
+	@Test
+	void nameMustBeUniqueAmongRequestsThatAreNotDeleted() {
+		saveNew("Grant");
+
+		assertThatThrownBy(() -> saveNew("Grant"))
+				.isInstanceOf(DuplicateRequestNameException.class)
+				.hasMessage("A request named 'Grant' already exists");
+	}
+
+	@Test
+	void nameOfDeletedRequestCanBeReusedAndLookupReturnsTheNewRequest() {
+		Request deleted = saveNew("Grant");
+		deleted.apply(RequestAction.DELETE, "duplicate", lifecycle, generator, NOW);
+		repository.save(deleted);
+
+		Request reused = saveNew("Grant");
+
+		assertThat(reused.id()).isGreaterThan(deleted.id());
+		assertThat(repository.findByName("Grant")).hasValueSatisfying(found -> {
+			assertThat(found.id()).isEqualTo(reused.id());
+			assertThat(found.state()).isEqualTo(RequestState.CREATED);
+		});
+	}
+
+	@Test
+	void reusedNameIsReservedAgainWhileTheNewRequestIsActive() {
+		Request deleted = saveNew("Grant");
+		deleted.apply(RequestAction.DELETE, "duplicate", lifecycle, generator, NOW);
+		repository.save(deleted);
+		saveNew("Grant");
+
+		assertThatThrownBy(() -> saveNew("Grant")).isInstanceOf(DuplicateRequestNameException.class);
+	}
+
+	@Test
+	void deletedRequestIsFoundByNameUntilTheNameIsReused() {
+		Request deleted = saveNew("Grant");
+		deleted.apply(RequestAction.DELETE, "duplicate", lifecycle, generator, NOW);
+		repository.save(deleted);
+
+		assertThat(repository.findByName("Grant")).hasValueSatisfying(
+				found -> assertThat(found.state()).isEqualTo(RequestState.DELETED));
 	}
 
 	@Test

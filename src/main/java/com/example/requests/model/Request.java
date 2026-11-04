@@ -40,12 +40,13 @@ public final class Request {
 
 	/**
 	 * Creates a new, not yet persisted request in the lifecycle's initial state.
-	 * Name and content are stored exactly as given.
+	 * Name and content are stored exactly as given. The name identifies the request in URLs, so it
+	 * must not contain {@code /}, {@code \} or {@code ;} and must not be {@code .} or {@code ..}.
 	 *
-	 * @throws DomainValidationException if the name or content is blank or exceeds its maximum length
+	 * @throws DomainValidationException if the name or content is invalid
 	 */
 	public static Request create(String name, String content, RequestLifecycle lifecycle, Instant now) {
-		return new Request(null, requireText(name, "name", MAX_NAME_LENGTH),
+		return new Request(null, requireValidName(name),
 				requireText(content, "content", MAX_CONTENT_LENGTH), lifecycle.initialState(), null, null, now, now);
 	}
 
@@ -104,6 +105,15 @@ public final class Request {
 			return null;
 		}
 		return requireText(reason, "reason", MAX_REASON_LENGTH).strip();
+	}
+
+	private static String requireValidName(String name) {
+		String value = requireText(name, "name", MAX_NAME_LENGTH);
+		if (value.equals(".") || value.equals("..")
+				|| value.chars().anyMatch(c -> c == '/' || c == '\\' || c == ';')) {
+			throw new DomainValidationException("name", "must not contain '/', '\\' or ';' and must not be '.' or '..'");
+		}
+		return value;
 	}
 
 	private static String requireText(String value, String field, int maxLength) {

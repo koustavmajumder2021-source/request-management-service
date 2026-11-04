@@ -2,6 +2,7 @@ package com.example.requests.service.impl;
 
 import com.example.requests.exception.ContentNotEditableException;
 import com.example.requests.exception.DomainValidationException;
+import com.example.requests.exception.DuplicateRequestNameException;
 import com.example.requests.exception.InvalidStateTransitionException;
 import com.example.requests.exception.RequestNotFoundException;
 import com.example.requests.model.PageQuery;
@@ -87,6 +88,16 @@ class RequestServiceImplTest {
 		}
 
 		@Test
+		void duplicateNameIsRejectedAndNotAudited() {
+			given(requests.save(any())).willThrow(new DuplicateRequestNameException("Grant"));
+
+			assertThatThrownBy(() -> service.create("Grant", "Body"))
+					.isInstanceOf(DuplicateRequestNameException.class);
+
+			verifyNoInteractions(stateChangeLog);
+		}
+
+		@Test
 		void invalidInputTouchesNothing() {
 			assertThatThrownBy(() -> service.create(" ", "Body")).isInstanceOf(DomainValidationException.class);
 
@@ -101,16 +112,16 @@ class RequestServiceImplTest {
 		void returnsStoredRequest() {
 			Request stored = givenStored(RequestState.CREATED);
 
-			assertThat(service.get(1L)).isSameAs(stored);
+			assertThat(service.get("Grant")).isSameAs(stored);
 		}
 
 		@Test
 		void unknownIdIsNotFound() {
-			given(requests.findById(99L)).willReturn(Optional.empty());
+			given(requests.findByName("missing")).willReturn(Optional.empty());
 
-			assertThatThrownBy(() -> service.get(99L))
+			assertThatThrownBy(() -> service.get("missing"))
 					.isInstanceOf(RequestNotFoundException.class)
-					.hasMessage("Request 99 not found");
+					.hasMessage("Request 'missing' not found");
 		}
 	}
 
@@ -122,7 +133,7 @@ class RequestServiceImplTest {
 			Request stored = givenStored(RequestState.VERIFIED);
 			given(requests.save(stored)).willReturn(stored);
 
-			Request edited = service.editContent(1L, "New body");
+			Request edited = service.editContent("Grant", "New body");
 
 			assertThat(edited.content()).isEqualTo("New body");
 			assertThat(edited.updatedAt()).isEqualTo(NOW);
@@ -134,7 +145,7 @@ class RequestServiceImplTest {
 		void refusedOutsideEditableStates() {
 			givenStored(RequestState.ACCEPTED);
 
-			assertThatThrownBy(() -> service.editContent(1L, "New body"))
+			assertThatThrownBy(() -> service.editContent("Grant", "New body"))
 					.isInstanceOf(ContentNotEditableException.class);
 
 			verify(requests, never()).save(any());
@@ -143,9 +154,9 @@ class RequestServiceImplTest {
 
 		@Test
 		void unknownIdIsNotFound() {
-			given(requests.findById(42L)).willReturn(Optional.empty());
+			given(requests.findByName("missing")).willReturn(Optional.empty());
 
-			assertThatThrownBy(() -> service.editContent(42L, "Body")).isInstanceOf(RequestNotFoundException.class);
+			assertThatThrownBy(() -> service.editContent("missing", "Body")).isInstanceOf(RequestNotFoundException.class);
 			verify(requests, never()).save(any());
 		}
 	}
@@ -158,7 +169,7 @@ class RequestServiceImplTest {
 			Request stored = givenStored(RequestState.CREATED);
 			given(requests.save(stored)).willReturn(stored);
 
-			Request verified = service.transition(1L, RequestAction.VERIFY, null);
+			Request verified = service.transition("Grant", RequestAction.VERIFY, null);
 
 			assertThat(verified.state()).isEqualTo(RequestState.VERIFIED);
 			InOrder order = inOrder(requests, stateChangeLog);
@@ -174,7 +185,7 @@ class RequestServiceImplTest {
 			given(requests.save(stored)).willReturn(stored);
 			given(publicationNumbers.next()).willReturn(42L);
 
-			Request published = service.transition(1L, RequestAction.PUBLISH, null);
+			Request published = service.transition("Grant", RequestAction.PUBLISH, null);
 
 			assertThat(published.state()).isEqualTo(RequestState.PUBLISHED);
 			assertThat(published.publicationNumber()).isEqualTo(42L);
@@ -186,7 +197,7 @@ class RequestServiceImplTest {
 			Request stored = givenStored(RequestState.VERIFIED);
 			given(requests.save(stored)).willReturn(stored);
 
-			Request rejected = service.transition(1L, RequestAction.REJECT, "Incomplete");
+			Request rejected = service.transition("Grant", RequestAction.REJECT, "Incomplete");
 
 			assertThat(rejected.reason()).isEqualTo("Incomplete");
 			verify(stateChangeLog).append(new StateChange(1L, RequestAction.REJECT, RequestState.VERIFIED,
@@ -197,7 +208,7 @@ class RequestServiceImplTest {
 		void forbiddenTransitionChangesNothing() {
 			Request stored = givenStored(RequestState.CREATED);
 
-			assertThatThrownBy(() -> service.transition(1L, RequestAction.PUBLISH, null))
+			assertThatThrownBy(() -> service.transition("Grant", RequestAction.PUBLISH, null))
 					.isInstanceOf(InvalidStateTransitionException.class);
 
 			assertThat(stored.state()).isEqualTo(RequestState.CREATED);
@@ -209,7 +220,7 @@ class RequestServiceImplTest {
 		void missingReasonChangesNothing() {
 			Request stored = givenStored(RequestState.CREATED);
 
-			assertThatThrownBy(() -> service.transition(1L, RequestAction.DELETE, " "))
+			assertThatThrownBy(() -> service.transition("Grant", RequestAction.DELETE, " "))
 					.isInstanceOf(DomainValidationException.class);
 
 			assertThat(stored.state()).isEqualTo(RequestState.CREATED);
@@ -223,7 +234,7 @@ class RequestServiceImplTest {
 			given(publicationNumbers.next()).willReturn(42L);
 			given(requests.save(any())).willThrow(new OptimisticLockingFailureException("stale"));
 
-			assertThatThrownBy(() -> service.transition(1L, RequestAction.PUBLISH, null))
+			assertThatThrownBy(() -> service.transition("Grant", RequestAction.PUBLISH, null))
 					.isInstanceOf(OptimisticLockingFailureException.class);
 
 			verifyNoInteractions(stateChangeLog);
@@ -231,9 +242,9 @@ class RequestServiceImplTest {
 
 		@Test
 		void unknownIdIsNotFound() {
-			given(requests.findById(42L)).willReturn(Optional.empty());
+			given(requests.findByName("missing")).willReturn(Optional.empty());
 
-			assertThatThrownBy(() -> service.transition(42L, RequestAction.VERIFY, null))
+			assertThatThrownBy(() -> service.transition("missing", RequestAction.VERIFY, null))
 					.isInstanceOf(RequestNotFoundException.class);
 			verifyNoInteractions(stateChangeLog, publicationNumbers);
 		}
@@ -260,21 +271,21 @@ class RequestServiceImplTest {
 					new StateChange(1L, RequestAction.VERIFY, RequestState.CREATED, RequestState.VERIFIED, null, NOW));
 			given(stateChangeLog.findByRequestId(1L)).willReturn(history);
 
-			assertThat(service.history(1L)).isEqualTo(history);
+			assertThat(service.history("Grant")).isEqualTo(history);
 		}
 
 		@Test
 		void historyOfUnknownRequestIsNotFound() {
-			given(requests.findById(42L)).willReturn(Optional.empty());
+			given(requests.findByName("missing")).willReturn(Optional.empty());
 
-			assertThatThrownBy(() -> service.history(42L)).isInstanceOf(RequestNotFoundException.class);
+			assertThatThrownBy(() -> service.history("missing")).isInstanceOf(RequestNotFoundException.class);
 			verifyNoInteractions(stateChangeLog);
 		}
 	}
 
 	private Request givenStored(RequestState state) {
 		Request request = stored(1L, state);
-		given(requests.findById(1L)).willReturn(Optional.of(request));
+		given(requests.findByName("Grant")).willReturn(Optional.of(request));
 		return request;
 	}
 

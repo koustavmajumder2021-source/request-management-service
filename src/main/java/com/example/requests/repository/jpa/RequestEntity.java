@@ -18,14 +18,23 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "requests",
-		uniqueConstraints = @UniqueConstraint(name = "uk_requests_publication_number", columnNames = "publication_number"),
+		uniqueConstraints = {
+				@UniqueConstraint(name = "uk_requests_publication_number", columnNames = "publication_number"),
+				@UniqueConstraint(name = RequestEntity.UNIQUE_ACTIVE_NAME, columnNames = "active_name")
+		},
 		indexes = {
 				@Index(name = "ix_requests_state", columnList = "state"),
 				@Index(name = "ix_requests_name", columnList = "name")
 		},
-		check = @CheckConstraint(name = "ck_requests_publication_number",
-				constraint = "(state = 'PUBLISHED') = (publication_number IS NOT NULL)"))
+		check = {
+				@CheckConstraint(name = "ck_requests_publication_number",
+						constraint = "(state = 'PUBLISHED') = (publication_number IS NOT NULL)"),
+				@CheckConstraint(name = "ck_requests_active_name",
+						constraint = "(state = 'DELETED' AND active_name IS NULL) OR (state <> 'DELETED' AND active_name = name)")
+		})
 class RequestEntity {
+
+	static final String UNIQUE_ACTIVE_NAME = "uk_requests_active_name";
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -33,6 +42,14 @@ class RequestEntity {
 
 	@Column(nullable = false)
 	private String name;
+
+	/**
+	 * Copy of {@link #name} while the request is not deleted, {@code null} once it is. The unique
+	 * constraint on this column makes names unique among non-deleted requests only, so the name of a
+	 * deleted request can be reused (a plain partial index would not work on H2).
+	 */
+	@Column(name = "active_name")
+	private String activeName;
 
 	@Column(nullable = false, length = 10_000)
 	private String content;
@@ -70,6 +87,7 @@ class RequestEntity {
 
 	void setName(String name) {
 		this.name = name;
+		syncActiveName();
 	}
 
 	String getContent() {
@@ -86,6 +104,11 @@ class RequestEntity {
 
 	void setState(RequestState state) {
 		this.state = state;
+		syncActiveName();
+	}
+
+	private void syncActiveName() {
+		activeName = state == RequestState.DELETED ? null : name;
 	}
 
 	String getReason() {

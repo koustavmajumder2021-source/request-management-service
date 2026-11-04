@@ -1,5 +1,6 @@
 package com.example.requests.service;
 
+import com.example.requests.exception.DuplicateRequestNameException;
 import com.example.requests.exception.InvalidStateTransitionException;
 import com.example.requests.model.RequestAction;
 import com.example.requests.model.RequestState;
@@ -34,23 +35,23 @@ class ConcurrencyIntegrationTest {
 
 	@Test
 	void concurrentPublicationsOfDifferentRequestsGetUniqueNumbers() throws Exception {
-		List<Long> ids = new ArrayList<>();
+		List<String> names = new ArrayList<>();
 		for (int i = 0; i < 20; i++) {
-			ids.add(accepted("Concurrent " + i));
+			names.add(accepted("Concurrent " + i));
 		}
 		Set<Long> numbers = ConcurrentHashMap.newKeySet();
 
-		runConcurrently(ids.stream().<Callable<Void>>map(id -> () -> {
-			numbers.add(service.transition(id, RequestAction.PUBLISH, null).publicationNumber());
+		runConcurrently(names.stream().<Callable<Void>>map(name -> () -> {
+			numbers.add(service.transition(name, RequestAction.PUBLISH, null).publicationNumber());
 			return null;
 		}).toList());
 
-		assertThat(numbers).hasSize(ids.size());
+		assertThat(numbers).hasSize(names.size());
 	}
 
 	@Test
 	void concurrentTransitionsOfTheSameRequestHaveExactlyOneWinner() throws Exception {
-		long id = accepted("Contended");
+		String name = accepted("Contended");
 		AtomicInteger successes = new AtomicInteger();
 		AtomicInteger expectedFailures = new AtomicInteger();
 		List<Callable<Void>> tasks = new ArrayList<>();
@@ -58,7 +59,7 @@ class ConcurrencyIntegrationTest {
 			RequestAction action = i % 2 == 0 ? RequestAction.PUBLISH : RequestAction.REJECT;
 			tasks.add(() -> {
 				try {
-					service.transition(id, action, "racing");
+					service.transition(name, action, "racing");
 					successes.incrementAndGet();
 				}
 				catch (InvalidStateTransitionException | ConcurrencyFailureException ex) {
@@ -72,16 +73,40 @@ class ConcurrencyIntegrationTest {
 
 		assertThat(successes).hasValue(1);
 		assertThat(expectedFailures).hasValue(THREADS - 1);
-		assertThat(service.history(id)).hasSize(4).last().extracting(StateChange::action)
+		assertThat(service.history(name)).hasSize(4).last().extracting(StateChange::action)
 				.isIn(RequestAction.PUBLISH, RequestAction.REJECT);
-		assertThat(service.get(id).state()).isIn(RequestState.PUBLISHED, RequestState.REJECTED);
+		assertThat(service.get(name).state()).isIn(RequestState.PUBLISHED, RequestState.REJECTED);
 	}
 
-	private long accepted(String name) {
-		long id = service.create(name, "Body").id();
-		service.transition(id, RequestAction.VERIFY, null);
-		service.transition(id, RequestAction.ACCEPT, null);
-		return id;
+	@Test
+	void concurrentCreationsWithTheSameNameHaveExactlyOneWinner() throws Exception {
+		AtomicInteger created = new AtomicInteger();
+		AtomicInteger duplicates = new AtomicInteger();
+		List<Callable<Void>> tasks = new ArrayList<>();
+		for (int i = 0; i < THREADS; i++) {
+			tasks.add(() -> {
+				try {
+					service.create("Same name", "Body");
+					created.incrementAndGet();
+				}
+				catch (DuplicateRequestNameException ex) {
+					duplicates.incrementAndGet();
+				}
+				return null;
+			});
+		}
+
+		runConcurrently(tasks);
+
+		assertThat(created).hasValue(1);
+		assertThat(duplicates).hasValue(THREADS - 1);
+	}
+
+	private String accepted(String name) {
+		service.create(name, "Body");
+		service.transition(name, RequestAction.VERIFY, null);
+		service.transition(name, RequestAction.ACCEPT, null);
+		return name;
 	}
 
 	private static void runConcurrently(List<Callable<Void>> tasks) throws Exception {

@@ -3,6 +3,7 @@ package com.example.requests.controller;
 import com.example.requests.exception.ContentNotEditableException;
 import com.example.requests.exception.DomainException;
 import com.example.requests.exception.DomainValidationException;
+import com.example.requests.exception.DuplicateRequestNameException;
 import com.example.requests.exception.InvalidStateTransitionException;
 import com.example.requests.exception.RequestNotFoundException;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -29,11 +30,19 @@ import java.util.Map;
 class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
 	/**
-	 * 404 for an unknown request id.
+	 * 404 for an unknown request name.
 	 */
 	@ExceptionHandler(RequestNotFoundException.class)
 	ProblemDetail notFound(RequestNotFoundException ex) {
 		return problem(HttpStatus.NOT_FOUND, "Request not found", ex.getMessage());
+	}
+
+	/**
+	 * 409 when the name is already used by a request that is not deleted.
+	 */
+	@ExceptionHandler(DuplicateRequestNameException.class)
+	ProblemDetail duplicateName(DuplicateRequestNameException ex) {
+		return problem(HttpStatus.CONFLICT, "Duplicate name", ex.getMessage());
 	}
 
 	/**
