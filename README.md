@@ -57,10 +57,10 @@ The build fails if line coverage drops below 90 % (currently ~99 %).
 
 | Layer | Test | Approach |
 |---|---|---|
-| Domain | `RequestLifecycleTest`, `RequestTest`, `ValueObjectsTest` | Plain JUnit, no Spring. All 36 state/action combinations are checked against the diagram. |
-| Application | `RequestServiceTest` | Mockito mocks of the ports: verifies orchestration (save before audit, nothing written on failure) and simulates infrastructure failures such as optimistic-lock conflicts. |
-| Persistence | `PersistenceAdaptersTest` | `@DataJpaTest` against the real Flyway schema, including DB constraints. |
-| API | `RequestApiIntegrationTest` | Full stack through MockMvc: status codes, validation, paging, history. |
+| Model | `RequestLifecycleTest`, `RequestTest`, `ValueObjectsTest` | Plain JUnit, no Spring. All 36 state/action combinations are checked against the diagram. |
+| Service | `RequestServiceImplTest` | Mockito mocks of the repository interfaces: verifies orchestration (save before audit, nothing written on failure) and simulates infrastructure failures such as optimistic-lock conflicts. |
+| Repository | `PersistenceAdaptersTest` | `@DataJpaTest` against the real Flyway schema, including DB constraints. |
+| Controller | `RequestApiIntegrationTest` | Full stack through MockMvc: status codes, validation, paging, history. |
 | Concurrency | `ConcurrencyIntegrationTest` | Parallel publications get unique numbers; racing transitions on one request have exactly one winner. |
 
 ## API
@@ -116,24 +116,25 @@ without duplicating the state machine.
 ## Design
 
 ```
-            HTTP
-              │
- ┌────────────▼─────────────┐
- │ web (controller, DTOs,   │  inbound adapter
- │ exception → HTTP mapping)│
- └────────────┬─────────────┘
- ┌────────────▼─────────────┐
- │ application              │  use cases, transaction boundary
- │ RequestService           │
- └────────────┬─────────────┘
- ┌────────────▼─────────────┐      ┌───────────────────────────┐
- │ domain                   │      │ domain.port               │
- │ Request, RequestLifecycle│─────▶│ RequestRepository         │
- │ StateChange, exceptions  │      │ StateChangeLog            │
- └──────────────────────────┘      │ PublicationNumberGenerator│
-                                   └─────────────▲─────────────┘
- ┌───────────────────────────────────────────────┴─────────────┐
- │ persistence (JPA entities, Spring Data, DB sequence)        │  outbound adapters
+              HTTP
+                │
+ ┌──────────────▼──────────────┐
+ │ controller + dto            │  REST endpoints, request/response bodies,
+ │                             │  exception → HTTP mapping
+ └──────────────┬──────────────┘
+ ┌──────────────▼──────────────┐
+ │ service                     │  use cases, transaction boundary
+ │ RequestService (interface)  │
+ │ impl.RequestServiceImpl     │
+ └──────────────┬──────────────┘
+ ┌──────────────▼──────────────┐      ┌───────────────────────────┐
+ │ model + exception           │      │ repository (interfaces)   │
+ │ Request, RequestLifecycle,  │─────▶│ RequestRepository         │
+ │ StateChange, domain errors  │      │ StateChangeLog            │
+ └─────────────────────────────┘      │ PublicationNumberGenerator│
+                                      └─────────────▲─────────────┘
+ ┌──────────────────────────────────────────────────┴──────────┐
+ │ repository.jpa (JPA entities, Spring Data, DB sequence)     │  implementations
  └─────────────────────────────┬───────────────────────────────┘
                                ▼
                  PostgreSQL / H2  (schema owned by Flyway)
@@ -141,21 +142,25 @@ without duplicating the state machine.
 
 ```
 src/main/java/com/example/requests
-├── domain                  business rules, no framework dependencies
-│   ├── exception
-│   └── port                interfaces implemented by infrastructure
-├── application             use cases and transactions
-└── infrastructure
-    ├── config              wiring of domain objects
-    ├── persistence         JPA adapters, Flyway-managed schema
-    └── web                 REST controller, DTOs, error handling
+├── controller      REST controller and exception handler
+├── dto             request and response bodies
+├── service         use case interface
+│   └── impl        implementation, transaction boundary
+├── model           business rules: Request, RequestLifecycle, states, actions
+├── exception       business errors
+├── repository      persistence interfaces used by the service and model
+│   └── jpa         JPA implementations, entities, Spring Data repositories
+└── config          bean wiring and configuration properties
 ```
+
+`model`, `exception`, the `repository` interfaces and `service` contain no JPA or web code; only
+`repository.jpa`, `controller` and `config` depend on infrastructure.
 
 ### Key decisions
 
 **Domain isolated from infrastructure.** `Request` and `RequestLifecycle` are plain Java. The
 business rules are unit tested in milliseconds without Spring, and the persistence technology can
-change by replacing the adapters only. The JPA entity is a separate class so that JPA
+change by replacing the `repository.jpa` implementations only. The JPA entity is a separate class so that JPA
 requirements (no-arg constructor, mutable fields, `@Version`) don't leak into the domain.
 
 **The state diagram is data.** `RequestLifecycle` is an immutable transition table built once
