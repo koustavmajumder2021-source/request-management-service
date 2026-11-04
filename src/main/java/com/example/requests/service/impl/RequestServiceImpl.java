@@ -1,5 +1,6 @@
 package com.example.requests.service.impl;
 
+import com.example.requests.exception.DuplicateRequestNameException;
 import com.example.requests.exception.RequestNotFoundException;
 import com.example.requests.model.PageQuery;
 import com.example.requests.model.PageResult;
@@ -43,7 +44,11 @@ public class RequestServiceImpl implements RequestService {
 
 	@Override
 	public Request create(String name, String content) {
-		Request saved = requests.save(Request.create(name, content, lifecycle, clock.instant()));
+		Request request = Request.create(name, content, lifecycle, clock.instant());
+		if (requests.existsActiveByName(request.name())) {
+			throw new DuplicateRequestNameException(request.name());
+		}
+		Request saved = requests.save(request);
 		stateChangeLog.append(StateChange.creationOf(saved));
 
 		return saved;

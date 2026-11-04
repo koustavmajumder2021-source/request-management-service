@@ -5,6 +5,7 @@ import com.example.requests.model.PageQuery;
 import com.example.requests.model.PageResult;
 import com.example.requests.model.Request;
 import com.example.requests.model.RequestFilter;
+import com.example.requests.model.RequestState;
 import com.example.requests.repository.RequestRepository;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -66,6 +67,11 @@ class JpaRequestRepository implements RequestRepository {
 		return jpa.findFirstByNameOrderByIdDesc(name).map(JpaRequestRepository::toDomain);
 	}
 
+	@Override
+	public boolean existsActiveByName(String name) {
+		return jpa.existsByNameAndStateNot(name, RequestState.DELETED);
+	}
+
 	/**
 	 * Combines the non-null criteria with AND. The name criterion is a case-insensitive {@code LIKE}
 	 * with any wildcard characters in the input escaped.
@@ -91,8 +97,8 @@ class JpaRequestRepository implements RequestRepository {
 	}
 
 	/**
-	 * Relying on the database constraint (instead of checking first) keeps uniqueness correct when two
-	 * requests with the same name are created concurrently.
+	 * Safety net behind the service's duplicate-name check: if two requests with the same name are created
+	 * concurrently, both can pass that check, and the unique constraint rejects the second insert.
 	 */
 	private static boolean violates(DataIntegrityViolationException ex, String constraint) {
 		for (Throwable cause = ex; cause != null; cause = cause.getCause()) {

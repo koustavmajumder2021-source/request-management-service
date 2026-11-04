@@ -87,6 +87,19 @@ class PersistenceAdaptersTest {
 	}
 
 	@Test
+	void existsActiveByNameIgnoresDeletedRequestsAndIsExact() {
+		Request active = saveNew("Active");
+		Request deleted = saveNew("Deleted");
+		deleted.apply(RequestAction.DELETE, "duplicate", lifecycle, generator, NOW);
+		repository.save(deleted);
+
+		assertThat(repository.existsActiveByName(active.name())).isTrue();
+		assertThat(repository.existsActiveByName("Deleted")).isFalse();
+		assertThat(repository.existsActiveByName("active")).isFalse();
+		assertThat(repository.existsActiveByName("does-not-exist")).isFalse();
+	}
+
+	@Test
 	void nameMustBeUniqueAmongRequestsThatAreNotDeleted() {
 		saveNew("Grant");
 

@@ -88,7 +88,19 @@ class RequestServiceImplTest {
 		}
 
 		@Test
-		void duplicateNameIsRejectedAndNotAudited() {
+		void duplicateNameIsRejectedBeforeAnythingIsSaved() {
+			given(requests.existsActiveByName("Grant")).willReturn(true);
+
+			assertThatThrownBy(() -> service.create("Grant", "Body"))
+					.isInstanceOf(DuplicateRequestNameException.class)
+					.hasMessage("A request named 'Grant' already exists");
+
+			verify(requests, never()).save(any());
+			verifyNoInteractions(stateChangeLog);
+		}
+
+		@Test
+		void duplicateDetectedOnSaveAfterConcurrentCreateIsNotAudited() {
 			given(requests.save(any())).willThrow(new DuplicateRequestNameException("Grant"));
 
 			assertThatThrownBy(() -> service.create("Grant", "Body"))

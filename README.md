@@ -205,9 +205,10 @@ domain enforces the same rules because it must not rely on its caller.
   pessimistic row locks.
 - **Concurrent publications of different requests:** the database sequence guarantees distinct
   numbers.
-- **Concurrent creations with the same name:** the unique constraint decides; exactly one succeeds
-  and the others get `409 Duplicate name`. Checking for the name in Java before inserting would
-  not be safe, because two requests could both pass the check.
+- **Creations with the same name:** the service checks for an active request with that name and
+  returns `409 Duplicate name` before saving anything. That check alone has a race window (two
+  simultaneous creates can both pass it), so a unique constraint stays in the database as a safety
+  net: exactly one insert succeeds and the other also ends as `409 Duplicate name`.
 - The service is stateless, so it can scale horizontally behind a load balancer; all coordination
   happens in the database.
 
@@ -263,15 +264,16 @@ each.
    returns the updated request.
 7. **Name is unique among requests that are not deleted**, compared exactly (case-sensitive,
    including spaces). Creating a duplicate returns `409 Conflict`. Names of rejected and published
-   requests stay reserved; the name of a **deleted** request can be reused. Uniqueness is enforced
-   by a database unique constraint (on an internal `active_name` column that is cleared on
-   deletion), so it also holds when two identical requests are created at the same moment.
+   requests stay reserved; the name of a **deleted** request can be reused. The service checks
+   for an active request with the same name before saving. A database unique constraint (on an
+   internal `active_name` column that is cleared on deletion) backs this up, so uniqueness also
+   holds when two identical requests are created at the same moment.
 8. **Addressing by name** targets the current request with that name. If the name only belongs to
    deleted requests, it targets the most recently deleted one, so its audit log stays reachable
    until the name is reused. After reuse, older deleted requests with that name are still stored and
    listed by `GET /api/requests/browse`, but can no longer be addressed by name.
 9. **The internal `id` can have gaps.** It is a database identity value; an insert that fails
-   (for example a refused duplicate name) still consumes one. It carries no meaning and is not used
+   (for example the losing side of two simultaneous creates with the same name) still consumes one. It carries no meaning and is not used
    to address requests.
 10. **Name is immutable.** Only the content can be edited. A `name` sent to the edit endpoint is
    ignored.
