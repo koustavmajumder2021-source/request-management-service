@@ -9,19 +9,17 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: validate
-  mvc:
-    problemdetails:
-      enabled: true
+      # Hibernate creates and evolves the tables from the entity mappings.
+      ddl-auto: update
+  sql:
+    init:
+      # schema.sql only creates the publication-number sequence, which Hibernate does not generate.
+      mode: always
 
 app:
   pagination:
     default-size: 10
     max-size: 100
-
-springdoc:
-  swagger-ui:
-    path: /swagger-ui.html
 
 ---
 spring:

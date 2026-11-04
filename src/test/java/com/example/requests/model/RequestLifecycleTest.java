@@ -83,15 +83,14 @@ class RequestLifecycleTest {
 
 	@ParameterizedTest
 	@EnumSource(names = {"PUBLISHED", "REJECTED", "DELETED"})
-	void endStatesAreTerminal(RequestState state) {
-		assertThat(lifecycle.isTerminal(state)).isTrue();
+	void endStatesAllowNoActions(RequestState state) {
 		assertThat(lifecycle.allowedActions(state)).isEmpty();
 	}
 
 	@ParameterizedTest
 	@EnumSource(names = {"CREATED", "VERIFIED", "ACCEPTED"})
-	void intermediateStatesAreNotTerminal(RequestState state) {
-		assertThat(lifecycle.isTerminal(state)).isFalse();
+	void intermediateStatesAllowFurtherActions(RequestState state) {
+		assertThat(lifecycle.allowedActions(state)).isNotEmpty();
 	}
 
 	@ParameterizedTest

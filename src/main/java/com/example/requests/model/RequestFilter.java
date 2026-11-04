@@ -9,8 +9,4 @@ public record RequestFilter(String name, RequestState state) {
 	public RequestFilter {
 		name = name == null || name.isBlank() ? null : name.strip();
 	}
-
-	public static RequestFilter none() {
-		return new RequestFilter(null, null);
-	}
 }

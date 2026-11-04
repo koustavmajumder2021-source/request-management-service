@@ -6,15 +6,21 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
 
 @Entity
-@Table(name = "request_state_changes")
+@Table(name = "request_state_changes",
+		indexes = @Index(name = "ix_request_state_changes_request_id", columnList = "request_id"))
 class StateChangeEntity {
 
 	@Id
@@ -23,6 +29,12 @@ class StateChangeEntity {
 
 	@Column(name = "request_id", nullable = false)
 	private Long requestId;
+
+	/** Read-only; only declares the foreign key to {@code requests}. Writes go through {@link #requestId}. */
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "request_id", insertable = false, updatable = false,
+			foreignKey = @ForeignKey(name = "fk_request_state_changes_request"))
+	private RequestEntity request;
 
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false, length = 20)

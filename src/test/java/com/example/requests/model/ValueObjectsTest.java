@@ -48,6 +48,5 @@ class ValueObjectsTest {
 		assertThat(new RequestFilter(null, null).name()).isNull();
 		assertThat(new RequestFilter("  grant ", RequestState.CREATED))
 				.isEqualTo(new RequestFilter("grant", RequestState.CREATED));
-		assertThat(RequestFilter.none()).isEqualTo(new RequestFilter(null, null));
 	}
 }

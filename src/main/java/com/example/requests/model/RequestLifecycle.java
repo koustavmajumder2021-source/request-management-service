@@ -89,13 +89,6 @@ public final class RequestLifecycle {
 		return editableStates.contains(state);
 	}
 
-	/**
-	 * @return whether no further action is possible from {@code state}
-	 */
-	public boolean isTerminal(RequestState state) {
-		return allowedActions(state).isEmpty();
-	}
-
 	public static final class Builder {
 
 		private final RequestState initialState;
