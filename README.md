@@ -11,12 +11,13 @@ state machine; each change is validated against it and recorded in an audit log.
                                      └────── reject ───────┴──────────────────▶ REJECTED
 ```
 
-- Name and content are mandatory on creation.
+- Name and content are mandatory on creation. The name is unique and identifies the request in
+  every URL; it cannot be changed.
 - Content can be edited only in `CREATED` and `VERIFIED`.
 - Deleting and rejecting require a reason.
 - Publishing assigns a unique numeric publication number.
 - Every state change is stored in an audit log.
-- Requests can be listed with pagination (default page size 10) and filtered by name and state.
+- Requests can be browsed with pagination (default page size 10) and filtered by name and state.
 
 Judgement calls not covered by the specification are listed under [Assumptions](#assumptions).
 
@@ -61,7 +62,7 @@ The build fails if line coverage drops below 90 % (currently ~99 %).
 | Service | `RequestServiceImplTest` | Mockito mocks of the repository interfaces: verifies orchestration (save before audit, nothing written on failure) and simulates infrastructure failures such as optimistic-lock conflicts. |
 | Repository | `PersistenceAdaptersTest` | `@DataJpaTest` against the schema Hibernate generates, including DB constraints. |
 | Controller | `RequestApiIntegrationTest` | Full stack through MockMvc: status codes, validation, paging, audit log. |
-| Concurrency | `ConcurrencyIntegrationTest` | Parallel publications get unique numbers; racing transitions on one request have exactly one winner. |
+| Concurrency | `ConcurrencyIntegrationTest` | Parallel publications get unique numbers; racing transitions on one request, and racing creations with the same name, each have exactly one winner. |
 
 ## API
 
@@ -186,7 +187,8 @@ problem. If other services ever need these events, the extension is a transactio
 **Hibernate generates the schema** from the entity mappings (`ddl-auto=update`), which keeps the
 project free of migration tooling. The mappings declare the database rules explicitly, so they are
 enforced even for writes that bypass the application: valid states, a unique publication number,
-and a `CHECK` that a request has a publication number if and only if it is `PUBLISHED`. The one
+a `CHECK` that a request has a publication number if and only if it is `PUBLISHED`, unique names
+among requests that are not deleted, and a foreign key from audit entries to their request. The one
 object Hibernate does not generate, the publication-number sequence, is created by a single
 idempotent statement in `schema.sql`. For a production system with long-lived data, versioned
 migrations (Flyway or Liquibase) would replace `ddl-auto`, because `update` never drops or renames
@@ -203,6 +205,9 @@ domain enforces the same rules because it must not rely on its caller.
   pessimistic row locks.
 - **Concurrent publications of different requests:** the database sequence guarantees distinct
   numbers.
+- **Concurrent creations with the same name:** the unique constraint decides; exactly one succeeds
+  and the others get `409 Duplicate name`. Checking for the name in Java before inserting would
+  not be safe, because two requests could both pass the check.
 - The service is stateless, so it can scale horizontally behind a load balancer; all coordination
   happens in the database.
 
@@ -265,22 +270,27 @@ each.
    deleted requests, it targets the most recently deleted one, so its audit log stays reachable
    until the name is reused. After reuse, older deleted requests with that name are still stored and
    listed by `GET /api/requests/browse`, but can no longer be addressed by name.
-9. **Name is immutable.** Only the content can be edited. A `name` sent to the edit endpoint is
+9. **The internal `id` can have gaps.** It is a database identity value; an insert that fails
+   (for example a refused duplicate name) still consumes one. It carries no meaning and is not used
+   to address requests.
+10. **Name is immutable.** Only the content can be edited. A `name` sent to the edit endpoint is
    ignored.
-10. **Content** ("body") is required, at most 10,000 characters, and stored as sent. Whitespace is
+11. **Content** ("body") is required, at most 10,000 characters, and stored as sent. Whitespace is
    not trimmed, since it may be meaningful, but whitespace-only content counts as blank.
-11. **Reason** is required (non-blank, at most 1,000 characters, trimmed) for delete and reject. It
+12. **Reason** is required (non-blank, at most 1,000 characters, trimmed) for delete and reject. It
    is stored on the request (the reason for its current state) and in the audit entry.
-12. **Editing content is not a state change**, so it is not written to the audit log. The audit log
+13. **Editing content is not a state change**, so it is not written to the audit log. The audit log
    records state changes, as specified. Content edits are reflected in `updatedAt`.
-13. **Validation order:** an action that isn't allowed in the current state returns `409` even when
-    the reason is also missing. Whether the action is possible at all is the more fundamental error.
+14. **Validation order:** the request body is validated first, so a missing or blank reason (or
+    blank content on edit) returns `400` even when the action would not be allowed in the current
+    state. Once the input is valid, an action the state diagram does not allow returns `409`. This
+    is the usual order for an HTTP API: a malformed request is rejected before any data is loaded.
 
 ### Publication number
 
-14. **A publication number is separate from the technical id.** It is assigned only on publication,
+15. **A publication number is separate from the technical id.** It is assigned only on publication,
     is unique and increases, and is never changed afterwards.
-15. **Gaps are acceptable.** Numbers come from a database sequence. If a publication transaction
+16. **Gaps are acceptable.** Numbers come from a database sequence. If a publication transaction
     rolls back (e.g. a concurrent modification), its number is not reused. The specification asks
     for a *unique* identifier, not a gap-free one. A gap-free counter would need a single locked
     counter row, forcing every publication to wait in line. Refused publish attempts (wrong state)
@@ -288,47 +298,48 @@ each.
 
 ### Audit log
 
-16. **The audit log records creation and every state transition**, with action, previous state,
+17. **The audit log records creation and every state transition**, with action, previous state,
     new state, reason and timestamp. It is stored in the same transaction as the change, so it is
     complete by construction. Failed attempts are not recorded.
-17. **No actor is recorded.** The specification has no users or authentication; adding a
+18. **No actor is recorded.** The specification has no users or authentication; adding a
     `changedBy` column is straightforward once there is an identity.
-18. **Timestamps are UTC**, taken from an injected `Clock`.
+19. **Timestamps are UTC**, taken from an injected `Clock`.
 
 ### Browsing
 
-19. **Name filter** is a case-insensitive "contains" match. SQL wildcard characters in the filter
+20. **Name filter** is a case-insensitive "contains" match. SQL wildcard characters in the filter
     (`%`, `_`) are matched literally. A blank filter means "no filter".
-20. **State filter** is an exact match on one state. Unknown values return `400`.
-21. Filters can be combined (logical AND).
-22. **Paging is zero-based.** The default page size is 10 (configurable). Sizes above the configured
+21. **State filter** is an exact match on one state, written as in the API (`PUBLISHED`, upper
+    case). Unknown or differently cased values return `400`.
+22. Filters can be combined (logical AND).
+23. **Paging is zero-based.** The default page size is 10 (configurable). Sizes above the configured
     maximum (100) are capped, not rejected. `size < 1` and `page < 0` return `400`. A page beyond
     the end returns an empty list with correct totals, not an error.
-23. **Results are ordered by id (creation order).** A stable order is required for paging to be
+24. **Results are ordered by id (creation order).** A stable order is required for paging to be
     consistent; the specification doesn't define one.
 
 ### Concurrency
 
-24. **Concurrent changes to the same request** are resolved with optimistic locking. Exactly one
+25. **Concurrent changes to the same request** are resolved with optimistic locking. Exactly one
     succeeds; the others receive `409 Concurrent modification` and may retry after reloading.
     Clients cannot send an expected version (`If-Match`) because the specification doesn't
     require it; it's listed under possible extensions.
 
 ### Technical
 
-25. **Database:** PostgreSQL is the target. H2 in PostgreSQL compatibility mode is the default for
+26. **Database:** PostgreSQL is the target. H2 in PostgreSQL compatibility mode is the default for
     running without any setup. It is file-based (`./data/`, git-ignored, so no database is
     submitted) rather than in-memory: an in-memory database would lose the publication-number
     sequence on restart and could then issue the same number twice. Tests use a separate in-memory
-    H2 database so they stay fast and isolated. The schema is generated by Hibernate and is identical
-    everywhere. Testcontainers would allow testing against real PostgreSQL but requires Docker on the
+    H2 database so they stay fast and isolated. The schema is generated by Hibernate from the same entity
+    mappings everywhere, plus `schema.sql` for the publication-number sequence. Testcontainers would allow testing against real PostgreSQL but requires Docker on the
     build machine, which the evaluation environment can't be assumed to have.
-26. **No message broker, cache or service split.** No requirement involves asynchronous
+27. **No message broker, cache or service split.** No requirement involves asynchronous
     processing, external consumers, or load beyond what one relational database handles. Each would
     add operational cost and new consistency problems (see [Key decisions](#key-decisions)).
-27. **No authentication or authorization**, since none is specified.
-28. **API documentation** (Swagger UI) is included to make the API easy to evaluate. It is not a GUI
+28. **No authentication or authorization**, since none is specified.
+29. **API documentation** (Swagger UI) is included to make the API easy to evaluate. It is not a GUI
     for the application and can be disabled with `springdoc.swagger-ui.enabled=false`.
-29. **API versioning** is not part of the URL. With a single version and no consumers yet, a prefix
+30. **API versioning** is not part of the URL. With a single version and no consumers yet, a prefix
     would be speculative; a version can be introduced through the path or a media type when
     needed.
