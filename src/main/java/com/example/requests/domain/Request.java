@@ -40,12 +40,12 @@ public final class Request {
 
 	/**
 	 * Creates a new, not yet persisted request in the lifecycle's initial state.
-	 * The name is trimmed; the content is stored as given.
+	 * Name and content are stored exactly as given.
 	 *
 	 * @throws DomainValidationException if the name or content is blank or exceeds its maximum length
 	 */
 	public static Request create(String name, String content, RequestLifecycle lifecycle, Instant now) {
-		return new Request(null, requireText(name, "name", MAX_NAME_LENGTH).strip(),
+		return new Request(null, requireText(name, "name", MAX_NAME_LENGTH),
 				requireText(content, "content", MAX_CONTENT_LENGTH), lifecycle.initialState(), null, null, now, now);
 	}
 

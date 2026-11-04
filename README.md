@@ -237,7 +237,8 @@ each.
 
 ### Data and validation
 
-5. **Name** is required, trimmed, and at most 255 characters. Names are **not unique**: the
+5. **Name** is required and at most 255 characters. It is stored exactly as sent (not trimmed);
+   a whitespace-only name counts as blank. Names are **not unique**: the
    specification doesn't ask for it, and two requests can legitimately share a name.
 6. **Name is immutable.** The specification only allows editing the body. A `name` sent to the edit
    endpoint is ignored.

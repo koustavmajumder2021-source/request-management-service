@@ -53,10 +53,10 @@ class RequestTest {
 		}
 
 		@Test
-		void trimsNameButPreservesContentWhitespace() {
+		void storesNameAndContentExactlyAsGiven() {
 			Request request = Request.create("  Grant  ", "  indented body\n", lifecycle, CREATED_AT);
 
-			assertThat(request.name()).isEqualTo("Grant");
+			assertThat(request.name()).isEqualTo("  Grant  ");
 			assertThat(request.content()).isEqualTo("  indented body\n");
 		}
 

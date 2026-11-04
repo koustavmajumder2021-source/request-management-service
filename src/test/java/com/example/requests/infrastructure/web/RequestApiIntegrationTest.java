@@ -47,7 +47,7 @@ class RequestApiIntegrationTest {
 							.content("{\"name\":\"  Grant  \",\"content\":\"Body\"}"))
 					.andExpect(status().isCreated())
 					.andExpect(jsonPath("$.id").isNumber())
-					.andExpect(jsonPath("$.name").value("Grant"))
+					.andExpect(jsonPath("$.name").value("  Grant  "))
 					.andExpect(jsonPath("$.content").value("Body"))
 					.andExpect(jsonPath("$.state").value("CREATED"))
 					.andExpect(jsonPath("$.publicationNumber").value(nullValue()))
@@ -57,7 +57,7 @@ class RequestApiIntegrationTest {
 					.andReturn().getResponse().getContentAsString();
 			long id = ((Number) JsonPath.read(json, "$.id")).longValue();
 
-			mvc.perform(get(BASE + "/" + id)).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Grant"));
+			mvc.perform(get(BASE + "/" + id)).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("  Grant  "));
 		}
 
 		@ParameterizedTest
