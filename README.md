@@ -71,7 +71,7 @@ Base path: `/api/requests`
 |---|---|---|---|---|
 | `POST` | `/` | `{"name", "content"}` | `201` | `400`, `409` |
 | `GET` | `/{name}` | | `200` | `404` |
-| `GET` | `/?name=&state=&page=&size=` | | `200` page | `400` |
+| `GET` | `/browse?name=&state=&page=&size=` | | `200` page | `400` |
 | `PATCH` | `/{name}` | `{"content"}` | `200` | `400`, `404`, `409` |
 | `POST` | `/{name}/verify` | | `200` | `404`, `409` |
 | `POST` | `/{name}/accept` | | `200` | `404`, `409` |
@@ -110,7 +110,7 @@ curl -s -X POST localhost:8080/api/requests/Solar%20panels/verify
 curl -s -X POST localhost:8080/api/requests/Solar%20panels/accept
 curl -s -X POST localhost:8080/api/requests/Solar%20panels/publish
 curl -s localhost:8080/api/requests/Solar%20panels/history
-curl -s 'localhost:8080/api/requests?name=solar&state=PUBLISHED&page=0&size=10'
+curl -s 'localhost:8080/api/requests/browse?name=solar&state=PUBLISHED&page=0&size=10'
 ```
 
 A request resource includes `allowedActions` and `contentEditable`, so clients can drive their UI
@@ -253,8 +253,9 @@ each.
    a whitespace-only name counts as blank.
 6. **Name is the public identifier.** All operations on a single request (read, edit, every
    transition, history) address it by name, so the name must be usable in a URL path: it must not
-   contain `/`, `\` or `;` and must not be `.` or `..`. Servers treat these specially in paths, so
-   such a request could be created but never reached. The numeric `id` remains the internal key.
+   contain `/`, `\` or `;` and must not be `.`, `..` or `browse`. Servers treat the first ones
+   specially in paths, and `GET /api/requests/browse` is the browse endpoint, so such a request
+   could be created but never reached. The numeric `id` remains the internal key.
 7. **Name is unique among requests that are not deleted**, compared exactly (case-sensitive,
    including spaces). Creating a duplicate returns `409 Conflict`. Names of rejected and published
    requests stay reserved; the name of a **deleted** request can be reused. Uniqueness is enforced
@@ -263,7 +264,7 @@ each.
 8. **Lookup by name** returns the current request with that name. If the name only belongs to
    deleted requests, it returns the most recently deleted one, so a deleted request stays readable
    until its name is reused. After reuse, older deleted requests with that name are still stored and
-   listed by `GET /api/requests`, but can no longer be addressed by name.
+   listed by `GET /api/requests/browse`, but can no longer be addressed by name.
 9. **Name is immutable.** Only the content can be edited. A `name` sent to the edit endpoint is
    ignored.
 10. **Content** ("body") is required, at most 10,000 characters, and stored as sent. Whitespace is

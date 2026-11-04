@@ -56,7 +56,7 @@ public interface RequestService {
 	/**
 	 * Lists requests page by page, filtered by name and state.
 	 */
-	PageResult<Request> search(RequestFilter filter, PageQuery pageQuery);
+	PageResult<Request> browse(RequestFilter filter, PageQuery pageQuery);
 
 	/**
 	 * @return the audit log of the request, oldest first

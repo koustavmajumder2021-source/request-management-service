@@ -254,13 +254,13 @@ class RequestServiceImplTest {
 	class Queries {
 
 		@Test
-		void searchDelegatesToRepository() {
+		void browseDelegatesToRepository() {
 			RequestFilter filter = new RequestFilter("grant", RequestState.CREATED);
 			PageQuery pageQuery = new PageQuery(1, 5);
 			PageResult<Request> page = new PageResult<>(List.of(stored(1L, RequestState.CREATED)), 1, 5, 6);
 			given(requests.search(filter, pageQuery)).willReturn(page);
 
-			assertThat(service.search(filter, pageQuery)).isSameAs(page);
+			assertThat(service.browse(filter, pageQuery)).isSameAs(page);
 		}
 
 		@Test

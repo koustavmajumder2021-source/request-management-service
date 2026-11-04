@@ -61,21 +61,21 @@ class RequestController {
 	}
 
 	/**
-	 * Lists requests, optionally filtered.
+	 * Browses requests page by page, optionally filtered by name and state.
 	 *
 	 * @param name  case-insensitive substring of the name
 	 * @param state exact state
 	 * @param page  zero-based page index
 	 * @param size  page size; defaults to {@code app.pagination.default-size}, capped at {@code app.pagination.max-size}
 	 */
-	@GetMapping
-	PageResponse<RequestResponse> search(
+	@GetMapping("/browse")
+	PageResponse<RequestResponse> browse(
 			@RequestParam(required = false) String name,
 			@RequestParam(required = false) RequestState state,
 			@RequestParam(defaultValue = "0") @Min(0) int page,
 			@RequestParam(required = false) @Min(1) Integer size) {
 		int pageSize = size == null ? pagination.getDefaultSize() : Math.min(size, pagination.getMaxSize());
-		return PageResponse.from(service.search(new RequestFilter(name, state), new PageQuery(page, pageSize))
+		return PageResponse.from(service.browse(new RequestFilter(name, state), new PageQuery(page, pageSize))
 				.map(this::toResponse));
 	}
 

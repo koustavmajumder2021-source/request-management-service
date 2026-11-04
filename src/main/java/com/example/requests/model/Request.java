@@ -7,6 +7,7 @@ import com.example.requests.repository.PublicationNumberGenerator;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Request aggregate. Owns all lifecycle invariants; has no framework dependencies.
@@ -16,6 +17,9 @@ public final class Request {
 	public static final int MAX_NAME_LENGTH = 255;
 	public static final int MAX_CONTENT_LENGTH = 10_000;
 	public static final int MAX_REASON_LENGTH = 1_000;
+
+	/** Names that would clash with URL path semantics or the {@code /browse} endpoint. */
+	private static final Set<String> RESERVED_NAMES = Set.of(".", "..", "browse");
 
 	private final Long id;
 	private final String name;
@@ -41,7 +45,8 @@ public final class Request {
 	/**
 	 * Creates a new, not yet persisted request in the lifecycle's initial state.
 	 * Name and content are stored exactly as given. The name identifies the request in URLs, so it
-	 * must not contain {@code /}, {@code \} or {@code ;} and must not be {@code .} or {@code ..}.
+	 * must not contain {@code /}, {@code \} or {@code ;} and must not be {@code .}, {@code ..} or
+	 * {@code browse} (reserved for the browse endpoint).
 	 *
 	 * @throws DomainValidationException if the name or content is invalid
 	 */
@@ -109,9 +114,9 @@ public final class Request {
 
 	private static String requireValidName(String name) {
 		String value = requireText(name, "name", MAX_NAME_LENGTH);
-		if (value.equals(".") || value.equals("..")
-				|| value.chars().anyMatch(c -> c == '/' || c == '\\' || c == ';')) {
-			throw new DomainValidationException("name", "must not contain '/', '\\' or ';' and must not be '.' or '..'");
+		if (RESERVED_NAMES.contains(value) || value.chars().anyMatch(c -> c == '/' || c == '\\' || c == ';')) {
+			throw new DomainValidationException("name",
+					"must not contain '/', '\\' or ';' and must not be '.', '..' or 'browse'");
 		}
 		return value;
 	}

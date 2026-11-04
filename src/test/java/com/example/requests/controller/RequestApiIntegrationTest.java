@@ -148,7 +148,7 @@ class RequestApiIntegrationTest {
 		}
 
 		@ParameterizedTest
-		@ValueSource(strings = {"a/b", "a\\\\b", "a;b", ".", ".."})
+		@ValueSource(strings = {"a/b", "a\\\\b", "a;b", ".", "..", "browse"})
 		void rejectsNamesThatCannotBeUsedInUrls(String name) throws Exception {
 			mvc.perform(post(BASE).contentType(MediaType.APPLICATION_JSON)
 							.content("{\"name\":\"" + name + "\",\"content\":\"Body\"}"))
@@ -471,7 +471,7 @@ class RequestApiIntegrationTest {
 		void defaultPageSizeIsTen() throws Exception {
 			createMany("Paged", 12);
 
-			mvc.perform(get(BASE).param("name", "Paged"))
+			mvc.perform(get(BASE + "/browse").param("name", "Paged"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.items", hasSize(10)))
 					.andExpect(jsonPath("$.items[0].name").value("Paged 01"))
@@ -485,7 +485,7 @@ class RequestApiIntegrationTest {
 		void secondPageHoldsTheRemainder() throws Exception {
 			createMany("Paged", 12);
 
-			mvc.perform(get(BASE).param("name", "Paged").param("page", "1"))
+			mvc.perform(get(BASE + "/browse").param("name", "Paged").param("page", "1"))
 					.andExpect(jsonPath("$.items", hasSize(2)))
 					.andExpect(jsonPath("$.items[0].name").value("Paged 11"));
 		}
@@ -494,7 +494,7 @@ class RequestApiIntegrationTest {
 		void pageBeyondTheEndIsEmptyNotAnError() throws Exception {
 			createMany("Paged", 3);
 
-			mvc.perform(get(BASE).param("name", "Paged").param("page", "7"))
+			mvc.perform(get(BASE + "/browse").param("name", "Paged").param("page", "7"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.items", empty()))
 					.andExpect(jsonPath("$.totalItems").value(3));
@@ -504,10 +504,10 @@ class RequestApiIntegrationTest {
 		void customSizeIsHonouredAndCappedAtMaximum() throws Exception {
 			createMany("Paged", 3);
 
-			mvc.perform(get(BASE).param("name", "Paged").param("size", "2"))
+			mvc.perform(get(BASE + "/browse").param("name", "Paged").param("size", "2"))
 					.andExpect(jsonPath("$.items", hasSize(2)))
 					.andExpect(jsonPath("$.totalPages").value(2));
-			mvc.perform(get(BASE).param("size", "100000"))
+			mvc.perform(get(BASE + "/browse").param("size", "100000"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.size").value(100));
 		}
@@ -516,12 +516,12 @@ class RequestApiIntegrationTest {
 		@ValueSource(strings = {"size=0", "size=-1", "page=-1", "size=abc", "page=x"})
 		void invalidPagingParametersAre400(String query) throws Exception {
 			String[] parts = query.split("=");
-			mvc.perform(get(BASE).param(parts[0], parts[1])).andExpect(status().isBadRequest());
+			mvc.perform(get(BASE + "/browse").param(parts[0], parts[1])).andExpect(status().isBadRequest());
 		}
 
 		@Test
 		void invalidPagingReportsTheParameter() throws Exception {
-			mvc.perform(get(BASE).param("size", "0"))
+			mvc.perform(get(BASE + "/browse").param("size", "0"))
 					.andExpect(jsonPath("$.errors.size").exists());
 		}
 
@@ -531,7 +531,7 @@ class RequestApiIntegrationTest {
 			create("solar roof");
 			create("Wind farm");
 
-			mvc.perform(get(BASE).param("name", "SOLAR"))
+			mvc.perform(get(BASE + "/browse").param("name", "SOLAR"))
 					.andExpect(jsonPath("$.items[*].name", contains("Solar Panels", "solar roof")));
 		}
 
@@ -541,27 +541,27 @@ class RequestApiIntegrationTest {
 			act(verified, "verify");
 			create("Filter created");
 
-			mvc.perform(get(BASE).param("name", "Filter").param("state", "VERIFIED"))
+			mvc.perform(get(BASE + "/browse").param("name", "Filter").param("state", "VERIFIED"))
 					.andExpect(jsonPath("$.items[*].name", contains("Filter verified")));
 		}
 
 		@Test
 		void unknownStateIs400() throws Exception {
-			mvc.perform(get(BASE).param("state", "UNKNOWN")).andExpect(status().isBadRequest());
+			mvc.perform(get(BASE + "/browse").param("state", "UNKNOWN")).andExpect(status().isBadRequest());
 		}
 
 		@Test
 		void blankNameFilterMeansNoFilter() throws Exception {
 			create("Anything");
 
-			mvc.perform(get(BASE).param("name", "  "))
+			mvc.perform(get(BASE + "/browse").param("name", "  "))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.totalItems").value(greaterThanOrEqualTo(1)));
 		}
 
 		@Test
 		void noMatchesGiveEmptyPage() throws Exception {
-			mvc.perform(get(BASE).param("name", "does-not-exist"))
+			mvc.perform(get(BASE + "/browse").param("name", "does-not-exist"))
 					.andExpect(jsonPath("$.items", empty()))
 					.andExpect(jsonPath("$.totalItems").value(0))
 					.andExpect(jsonPath("$.totalPages").value(0));

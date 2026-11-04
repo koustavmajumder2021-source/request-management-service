@@ -73,7 +73,7 @@ public class RequestServiceImpl implements RequestService {
 
 	@Override
 	@Transactional(readOnly = true)
-	public PageResult<Request> search(RequestFilter filter, PageQuery pageQuery) {
+	public PageResult<Request> browse(RequestFilter filter, PageQuery pageQuery) {
 		return requests.search(filter, pageQuery);
 	}
 
