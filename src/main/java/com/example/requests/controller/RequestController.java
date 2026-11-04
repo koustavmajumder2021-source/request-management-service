@@ -49,7 +49,7 @@ class RequestController {
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
 	RequestResponse create(@Valid @RequestBody CreateRequestBody body) {
-		return toResponse(service.create(body.name(), body.content()));
+		return toResponse(service.create(body.getName(), body.getContent()));
 	}
 
 	/**
@@ -74,7 +74,7 @@ class RequestController {
 			@RequestParam(required = false) RequestState state,
 			@RequestParam(defaultValue = "0") @Min(0) int page,
 			@RequestParam(required = false) @Min(1) Integer size) {
-		int pageSize = size == null ? pagination.defaultSize() : Math.min(size, pagination.maxSize());
+		int pageSize = size == null ? pagination.getDefaultSize() : Math.min(size, pagination.getMaxSize());
 		return PageResponse.from(service.search(new RequestFilter(name, state), new PageQuery(page, pageSize))
 				.map(this::toResponse));
 	}
@@ -84,7 +84,7 @@ class RequestController {
 	 */
 	@PatchMapping("/{name}")
 	RequestResponse editContent(@PathVariable String name, @Valid @RequestBody UpdateContentBody body) {
-		return toResponse(service.editContent(name, body.content()));
+		return toResponse(service.editContent(name, body.getContent()));
 	}
 
 	/**
@@ -116,7 +116,7 @@ class RequestController {
 	 */
 	@PostMapping("/{name}/reject")
 	RequestResponse reject(@PathVariable String name, @Valid @RequestBody ReasonBody body) {
-		return transition(name, RequestAction.REJECT, body.reason());
+		return transition(name, RequestAction.REJECT, body.getReason());
 	}
 
 	/**
@@ -124,7 +124,7 @@ class RequestController {
 	 */
 	@PostMapping("/{name}/delete")
 	RequestResponse delete(@PathVariable String name, @Valid @RequestBody ReasonBody body) {
-		return transition(name, RequestAction.DELETE, body.reason());
+		return transition(name, RequestAction.DELETE, body.getReason());
 	}
 
 	/**
