@@ -69,7 +69,7 @@ Base path: `/api/requests`
 
 | Method | Path | Body | Success | Errors |
 |---|---|---|---|---|
-| `POST` | `/` | `{"name", "content"}` | `201` + `Location` | `400` |
+| `POST` | `/` | `{"name", "content"}` | `201` | `400` |
 | `GET` | `/{id}` | | `200` | `404` |
 | `GET` | `/?name=&state=&page=&size=` | | `200` page | `400` |
 | `PATCH` | `/{id}` | `{"content"}` | `200` | `400`, `404`, `409` |

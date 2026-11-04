@@ -14,9 +14,8 @@ import com.example.requests.infrastructure.web.RequestDtos.RequestResponse;
 import com.example.requests.infrastructure.web.RequestDtos.StateChangeResponse;
 import com.example.requests.infrastructure.web.RequestDtos.UpdateContentBody;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,8 +23,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.util.List;
 
@@ -44,16 +43,12 @@ class RequestController {
 	}
 
 	/**
-	 * Creates a request in state CREATED.
-	 *
-	 * @return 201 with a {@code Location} header pointing to the new request
+	 * Creates a request in state CREATED and returns it with status 201.
 	 */
 	@PostMapping
-	ResponseEntity<RequestResponse> create(@Valid @RequestBody CreateRequestBody body) {
-		Request created = service.create(body.name(), body.content());
-		return ResponseEntity
-				.created(ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}").buildAndExpand(created.id()).toUri())
-				.body(toResponse(created));
+	@ResponseStatus(HttpStatus.CREATED)
+	RequestResponse create(@Valid @RequestBody CreateRequestBody body) {
+		return toResponse(service.create(body.name(), body.content()));
 	}
 
 	/**

@@ -17,7 +17,6 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.empty;
-import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
@@ -43,7 +42,7 @@ class RequestApiIntegrationTest {
 	class Create {
 
 		@Test
-		void returns201WithLocationAndBody() throws Exception {
+		void returns201WithCreatedRequest() throws Exception {
 			String json = mvc.perform(post(BASE).contentType(MediaType.APPLICATION_JSON)
 							.content("{\"name\":\"  Grant  \",\"content\":\"Body\"}"))
 					.andExpect(status().isCreated())
@@ -58,10 +57,7 @@ class RequestApiIntegrationTest {
 					.andReturn().getResponse().getContentAsString();
 			long id = ((Number) JsonPath.read(json, "$.id")).longValue();
 
-			mvc.perform(get(BASE + "/" + id)).andExpect(status().isOk());
-			mvc.perform(post(BASE).contentType(MediaType.APPLICATION_JSON)
-							.content("{\"name\":\"Second\",\"content\":\"Body\"}"))
-					.andExpect(header().string("Location", endsWith(BASE + "/" + (id + 1))));
+			mvc.perform(get(BASE + "/" + id)).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Grant"));
 		}
 
 		@ParameterizedTest
