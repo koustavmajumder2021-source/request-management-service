@@ -79,7 +79,7 @@ public class RequestServiceImpl implements RequestService {
 
 	@Override
 	@Transactional(readOnly = true)
-	public List<StateChange> history(String name) {
+	public List<StateChange> auditLog(String name) {
 		return stateChangeLog.findByRequestId(load(name).id());
 	}
 

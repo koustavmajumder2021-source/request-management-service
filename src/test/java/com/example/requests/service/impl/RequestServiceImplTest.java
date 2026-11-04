@@ -264,21 +264,21 @@ class RequestServiceImplTest {
 		}
 
 		@Test
-		void historyReturnsAuditLogOfExistingRequest() {
+		void auditLogOfExistingRequestIsReturned() {
 			givenStored(RequestState.VERIFIED);
 			List<StateChange> history = List.of(
 					new StateChange(1L, RequestAction.CREATE, null, RequestState.CREATED, null, CREATED_AT),
 					new StateChange(1L, RequestAction.VERIFY, RequestState.CREATED, RequestState.VERIFIED, null, NOW));
 			given(stateChangeLog.findByRequestId(1L)).willReturn(history);
 
-			assertThat(service.history("Grant")).isEqualTo(history);
+			assertThat(service.auditLog("Grant")).isEqualTo(history);
 		}
 
 		@Test
-		void historyOfUnknownRequestIsNotFound() {
+		void auditLogOfUnknownRequestIsNotFound() {
 			given(requests.findByName("missing")).willReturn(Optional.empty());
 
-			assertThatThrownBy(() -> service.history("missing")).isInstanceOf(RequestNotFoundException.class);
+			assertThatThrownBy(() -> service.auditLog("missing")).isInstanceOf(RequestNotFoundException.class);
 			verifyNoInteractions(stateChangeLog);
 		}
 	}

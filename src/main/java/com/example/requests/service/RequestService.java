@@ -62,5 +62,5 @@ public interface RequestService {
 	 * @return the audit log of the request, oldest first
 	 * @throws RequestNotFoundException if no request has this name
 	 */
-	List<StateChange> history(String name);
+	List<StateChange> auditLog(String name);
 }

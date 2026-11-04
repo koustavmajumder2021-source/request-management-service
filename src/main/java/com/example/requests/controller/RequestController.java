@@ -130,9 +130,9 @@ class RequestController {
 	/**
 	 * Returns the audit log of the request, oldest first.
 	 */
-	@GetMapping("/{name}/history")
-	List<StateChangeResponse> history(@PathVariable String name) {
-		return service.history(name).stream().map(StateChangeResponse::from).toList();
+	@GetMapping("/{name}/audit-log")
+	List<StateChangeResponse> auditLog(@PathVariable String name) {
+		return service.auditLog(name).stream().map(StateChangeResponse::from).toList();
 	}
 
 	private RequestResponse transition(String name, RequestAction action, String reason) {

@@ -134,7 +134,7 @@ class RequestApiIntegrationTest {
 			mvc.perform(get(BASE + "/{name}", "Grant"))
 					.andExpect(jsonPath("$.content").value("Second attempt"))
 					.andExpect(jsonPath("$.state").value("CREATED"));
-			mvc.perform(get(BASE + "/{name}/history", "Grant")).andExpect(jsonPath("$", hasSize(1)));
+			mvc.perform(get(BASE + "/{name}/audit-log", "Grant")).andExpect(jsonPath("$", hasSize(1)));
 		}
 
 		@Test
@@ -427,7 +427,7 @@ class RequestApiIntegrationTest {
 	}
 
 	@Nested
-	class History {
+	class AuditLog {
 
 		@Test
 		void recordsEveryStateChangeInOrder() throws Exception {
@@ -436,7 +436,7 @@ class RequestApiIntegrationTest {
 			editContent(name, "Updated");
 			actWithReason(name, "reject", "Incomplete");
 
-			mvc.perform(get(BASE + "/{name}/history", name))
+			mvc.perform(get(BASE + "/{name}/audit-log", name))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$", hasSize(3)))
 					.andExpect(jsonPath("$[0].action").value("CREATE"))
@@ -455,12 +455,12 @@ class RequestApiIntegrationTest {
 			String name = create("Grant");
 			act(name, "publish");
 
-			mvc.perform(get(BASE + "/{name}/history", name)).andExpect(jsonPath("$", hasSize(1)));
+			mvc.perform(get(BASE + "/{name}/audit-log", name)).andExpect(jsonPath("$", hasSize(1)));
 		}
 
 		@Test
 		void unknownNameIs404() throws Exception {
-			mvc.perform(get(BASE + "/{name}/history", "does-not-exist")).andExpect(status().isNotFound());
+			mvc.perform(get(BASE + "/{name}/audit-log", "does-not-exist")).andExpect(status().isNotFound());
 		}
 	}
 

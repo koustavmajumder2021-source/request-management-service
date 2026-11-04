@@ -60,7 +60,7 @@ The build fails if line coverage drops below 90 % (currently ~99 %).
 | Model | `RequestLifecycleTest`, `RequestTest`, `ValueObjectsTest` | Plain JUnit, no Spring. All 36 state/action combinations are checked against the diagram. |
 | Service | `RequestServiceImplTest` | Mockito mocks of the repository interfaces: verifies orchestration (save before audit, nothing written on failure) and simulates infrastructure failures such as optimistic-lock conflicts. |
 | Repository | `PersistenceAdaptersTest` | `@DataJpaTest` against the schema Hibernate generates, including DB constraints. |
-| Controller | `RequestApiIntegrationTest` | Full stack through MockMvc: status codes, validation, paging, history. |
+| Controller | `RequestApiIntegrationTest` | Full stack through MockMvc: status codes, validation, paging, audit log. |
 | Concurrency | `ConcurrencyIntegrationTest` | Parallel publications get unique numbers; racing transitions on one request have exactly one winner. |
 
 ## API
@@ -78,7 +78,7 @@ Base path: `/api/requests`
 | `POST` | `/{name}/publish` | | `200` | `404`, `409` |
 | `POST` | `/{name}/reject` | `{"reason"}` | `200` | `400`, `404`, `409` |
 | `POST` | `/{name}/delete` | `{"reason"}` | `200` | `400`, `404`, `409` |
-| `GET` | `/{name}/history` | | `200` | `404` |
+| `GET` | `/{name}/audit-log` | | `200` | `404` |
 
 Requests are addressed by **name**, URL-encoded in the path (`Solar panels` → `Solar%20panels`).
 The numeric `id` is the internal database key; it is still returned in responses.
@@ -109,7 +109,7 @@ curl -s -X POST localhost:8080/api/requests -H 'Content-Type: application/json' 
 curl -s -X POST localhost:8080/api/requests/Solar%20panels/verify
 curl -s -X POST localhost:8080/api/requests/Solar%20panels/accept
 curl -s -X POST localhost:8080/api/requests/Solar%20panels/publish
-curl -s localhost:8080/api/requests/Solar%20panels/history
+curl -s localhost:8080/api/requests/Solar%20panels/audit-log
 curl -s 'localhost:8080/api/requests/browse?name=solar&state=PUBLISHED&page=0&size=10'
 ```
 
@@ -240,7 +240,7 @@ each.
    accepting a `CREATED` request).
 2. **`PUBLISHED`, `REJECTED` and `DELETED` are terminal.** The diagram has no arrows leaving them.
 3. **Delete is a soft delete.** The diagram models `DELETED` as a state, so a deleted request remains
-   readable, appears in listings and keeps its history. Nothing is physically removed; that also
+   readable, appears in listings and keeps its audit log. Nothing is physically removed; that also
    keeps the audit log complete. Deletion is exposed as `POST /{name}/delete`, not HTTP `DELETE`,
    because it carries a mandatory body (the reason), and bodies on `DELETE` are poorly supported by
    clients and proxies.
@@ -252,7 +252,7 @@ each.
 5. **Name** is required and at most 255 characters. It is stored exactly as sent (not trimmed);
    a whitespace-only name counts as blank.
 6. **Name is the public identifier.** All operations on a single request (read, edit, every
-   transition, history) address it by name, so the name must be usable in a URL path: it must not
+   transition, audit log) address it by name, so the name must be usable in a URL path: it must not
    contain `/`, `\` or `;` and must not be `.`, `..` or `browse`. Servers treat the first ones
    specially in paths, and `GET /api/requests/browse` is the browse endpoint, so such a request
    could be created but never reached. The numeric `id` remains the internal key.
