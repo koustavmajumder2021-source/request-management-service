@@ -50,12 +50,6 @@ public class RequestServiceImpl implements RequestService {
 	}
 
 	@Override
-	@Transactional(readOnly = true)
-	public Request get(String name) {
-		return load(name);
-	}
-
-	@Override
 	public Request editContent(String name, String content) {
 		Request request = load(name);
 		request.editContent(content, lifecycle, clock.instant());

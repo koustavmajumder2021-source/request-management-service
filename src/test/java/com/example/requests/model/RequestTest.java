@@ -79,7 +79,7 @@ class RequestTest {
 		}
 
 		@ParameterizedTest
-		@ValueSource(strings = {"a/b", "a\\b", "a;b", ".", "..", "browse"})
+		@ValueSource(strings = {"a/b", "a\\b", "a;b", ".", ".."})
 		void rejectsNamesThatCannotBeUsedInUrls(String name) {
 			assertThatThrownBy(() -> Request.create(name, "Body", lifecycle, CREATED_AT))
 					.isInstanceOfSatisfying(DomainValidationException.class,
@@ -87,7 +87,7 @@ class RequestTest {
 		}
 
 		@ParameterizedTest
-		@ValueSource(strings = {"a.b", "...", "Solar panels", "x-y_z 2026", "Ünïcødé", "Browse", "browse results"})
+		@ValueSource(strings = {"a.b", "...", "Solar panels", "x-y_z 2026", "Ünïcødé", "browse", "Browse"})
 		void acceptsOtherNames(String name) {
 			assertThat(Request.create(name, "Body", lifecycle, CREATED_AT).name()).isEqualTo(name);
 		}

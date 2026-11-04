@@ -106,26 +106,6 @@ class RequestServiceImplTest {
 	}
 
 	@Nested
-	class Get {
-
-		@Test
-		void returnsStoredRequest() {
-			Request stored = givenStored(RequestState.CREATED);
-
-			assertThat(service.get("Grant")).isSameAs(stored);
-		}
-
-		@Test
-		void unknownIdIsNotFound() {
-			given(requests.findByName("missing")).willReturn(Optional.empty());
-
-			assertThatThrownBy(() -> service.get("missing"))
-					.isInstanceOf(RequestNotFoundException.class)
-					.hasMessage("Request 'missing' not found");
-		}
-	}
-
-	@Nested
 	class EditContent {
 
 		@Test
@@ -156,7 +136,9 @@ class RequestServiceImplTest {
 		void unknownIdIsNotFound() {
 			given(requests.findByName("missing")).willReturn(Optional.empty());
 
-			assertThatThrownBy(() -> service.editContent("missing", "Body")).isInstanceOf(RequestNotFoundException.class);
+			assertThatThrownBy(() -> service.editContent("missing", "Body"))
+					.isInstanceOf(RequestNotFoundException.class)
+					.hasMessage("Request 'missing' not found");
 			verify(requests, never()).save(any());
 		}
 	}

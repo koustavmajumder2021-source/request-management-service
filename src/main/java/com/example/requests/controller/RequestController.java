@@ -53,14 +53,6 @@ class RequestController {
 	}
 
 	/**
-	 * Returns a single request, or 404 if it does not exist.
-	 */
-	@GetMapping("/{name}")
-	RequestResponse get(@PathVariable String name) {
-		return toResponse(service.get(name));
-	}
-
-	/**
 	 * Browses requests page by page, optionally filtered by name and state.
 	 *
 	 * @param name  case-insensitive substring of the name

@@ -29,11 +29,6 @@ public interface RequestService {
 	Request create(String name, String content);
 
 	/**
-	 * @throws RequestNotFoundException if no request has this name
-	 */
-	Request get(String name);
-
-	/**
 	 * Replaces the content of a request. Editing is not a state change, so the audit log is not touched.
 	 *
 	 * @throws RequestNotFoundException    if no request has this name

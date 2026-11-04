@@ -57,8 +57,8 @@ class RequestApiIntegrationTest {
 					.andReturn().getResponse().getContentAsString();
 			assertThat(((Number) JsonPath.read(json, "$.id")).longValue()).isPositive();
 
-			mvc.perform(get(BASE + "/{name}", "  Grant  ")).andExpect(status().isOk())
-					.andExpect(jsonPath("$.name").value("  Grant  "));
+			mvc.perform(get(BASE + "/{name}/audit-log", "  Grant  ")).andExpect(status().isOk())
+					.andExpect(jsonPath("$[0].action").value("CREATE"));
 		}
 
 		@ParameterizedTest
@@ -131,24 +131,25 @@ class RequestApiIntegrationTest {
 							.content("{\"name\":\"Grant\",\"content\":\"Second attempt\"}"))
 					.andExpect(status().isCreated())
 					.andExpect(jsonPath("$.state").value("CREATED"));
-			mvc.perform(get(BASE + "/{name}", "Grant"))
-					.andExpect(jsonPath("$.content").value("Second attempt"))
-					.andExpect(jsonPath("$.state").value("CREATED"));
+			browse("Grant")
+					.andExpect(jsonPath("$.totalItems").value(2))
+					.andExpect(jsonPath("$.items[0].state").value("DELETED"))
+					.andExpect(jsonPath("$.items[1].content").value("Second attempt"));
 			mvc.perform(get(BASE + "/{name}/audit-log", "Grant")).andExpect(jsonPath("$", hasSize(1)));
 		}
 
 		@Test
-		void deletedRequestRemainsReadableUntilItsNameIsReused() throws Exception {
+		void deletedRequestStaysAddressableUntilItsNameIsReused() throws Exception {
 			create("Grant");
 			actWithReason("Grant", "delete", "duplicate");
 
-			mvc.perform(get(BASE + "/{name}", "Grant"))
+			mvc.perform(get(BASE + "/{name}/audit-log", "Grant"))
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.state").value("DELETED"));
+					.andExpect(jsonPath("$[1].toState").value("DELETED"));
 		}
 
 		@ParameterizedTest
-		@ValueSource(strings = {"a/b", "a\\\\b", "a;b", ".", "..", "browse"})
+		@ValueSource(strings = {"a/b", "a\\\\b", "a;b", ".", ".."})
 		void rejectsNamesThatCannotBeUsedInUrls(String name) throws Exception {
 			mvc.perform(post(BASE).contentType(MediaType.APPLICATION_JSON)
 							.content("{\"name\":\"" + name + "\",\"content\":\"Body\"}"))
@@ -184,21 +185,18 @@ class RequestApiIntegrationTest {
 	}
 
 	@Nested
-	class Read {
+	class Addressing {
 
 		@Test
-		void returnsRequestByName() throws Exception {
-			String name = create("Grant");
+		void singleRequestIsNotReadableDirectly() throws Exception {
+			create("Grant");
 
-			mvc.perform(get(BASE + "/{name}", name))
-					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.id").isNumber())
-					.andExpect(jsonPath("$.name").value("Grant"));
+			mvc.perform(get(BASE + "/{name}", "Grant")).andExpect(status().isMethodNotAllowed());
 		}
 
 		@Test
 		void unknownNameIs404ProblemDetail() throws Exception {
-			mvc.perform(get(BASE + "/{name}", "does-not-exist"))
+			mvc.perform(post(BASE + "/{name}/verify", "does-not-exist"))
 					.andExpect(status().isNotFound())
 					.andExpect(header().string("Content-Type", containsString("application/problem+json")))
 					.andExpect(jsonPath("$.title").value("Request not found"))
@@ -209,7 +207,7 @@ class RequestApiIntegrationTest {
 		void nameWithSpacesIsAddressable() throws Exception {
 			create("Solar panels 2026");
 
-			mvc.perform(get(BASE + "/{name}", "Solar panels 2026"))
+			act("Solar panels 2026", "verify")
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.name").value("Solar panels 2026"));
 		}
@@ -218,7 +216,17 @@ class RequestApiIntegrationTest {
 		void nameIsCaseSensitive() throws Exception {
 			create("Grant");
 
-			mvc.perform(get(BASE + "/{name}", "grant")).andExpect(status().isNotFound());
+			act("grant", "verify").andExpect(status().isNotFound());
+		}
+
+		@Test
+		void requestNamedBrowseIsAddressableAndBrowseStillWorks() throws Exception {
+			create("browse");
+
+			editContent("browse", "Updated").andExpect(status().isOk());
+			act("browse", "verify").andExpect(status().isOk());
+			mvc.perform(get(BASE + "/{name}/audit-log", "browse")).andExpect(jsonPath("$", hasSize(2)));
+			browse("browse").andExpect(jsonPath("$.items[0].content").value("Updated"));
 		}
 	}
 
@@ -251,7 +259,7 @@ class RequestApiIntegrationTest {
 					.andExpect(jsonPath("$.title").value("Content not editable"))
 					.andExpect(jsonPath("$.detail").value("Content cannot be edited in state ACCEPTED"))
 					.andExpect(jsonPath("$.currentState").value("ACCEPTED"));
-			mvc.perform(get(BASE + "/{name}", name)).andExpect(jsonPath("$.content").value("Body"));
+			browse(name).andExpect(jsonPath("$.items[0].content").value("Body"));
 		}
 
 		@Test
@@ -349,8 +357,9 @@ class RequestApiIntegrationTest {
 
 			actWithReason(name, "delete", "Duplicate").andExpect(status().isOk())
 					.andExpect(jsonPath("$.state").value("DELETED"));
-			mvc.perform(get(BASE + "/{name}", name)).andExpect(status().isOk())
-					.andExpect(jsonPath("$.reason").value("Duplicate"));
+			browse(name)
+					.andExpect(jsonPath("$.items[0].state").value("DELETED"))
+					.andExpect(jsonPath("$.items[0].reason").value("Duplicate"));
 		}
 
 		@ParameterizedTest
@@ -610,7 +619,12 @@ class RequestApiIntegrationTest {
 	}
 
 	private long publicationNumberOf(String name) throws Exception {
-		String json = mvc.perform(get(BASE + "/{name}", name)).andReturn().getResponse().getContentAsString();
-		return ((Number) JsonPath.read(json, "$.publicationNumber")).longValue();
+		String json = browse(name).andReturn().getResponse().getContentAsString();
+		return ((Number) JsonPath.read(json, "$.items[0].publicationNumber")).longValue();
+	}
+
+	/** Browses by name; names in each test are distinct, so the match is the request itself. */
+	private ResultActions browse(String name) throws Exception {
+		return mvc.perform(get(BASE + "/browse").param("name", name));
 	}
 }

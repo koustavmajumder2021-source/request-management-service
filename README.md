@@ -70,7 +70,6 @@ Base path: `/api/requests`
 | Method | Path | Body | Success | Errors |
 |---|---|---|---|---|
 | `POST` | `/` | `{"name", "content"}` | `201` | `400`, `409` |
-| `GET` | `/{name}` | | `200` | `404` |
 | `GET` | `/browse?name=&state=&page=&size=` | | `200` page | `400` |
 | `PATCH` | `/{name}` | `{"content"}` | `200` | `400`, `404`, `409` |
 | `POST` | `/{name}/verify` | | `200` | `404`, `409` |
@@ -240,7 +239,7 @@ each.
    accepting a `CREATED` request).
 2. **`PUBLISHED`, `REJECTED` and `DELETED` are terminal.** The diagram has no arrows leaving them.
 3. **Delete is a soft delete.** The diagram models `DELETED` as a state, so a deleted request remains
-   readable, appears in listings and keeps its audit log. Nothing is physically removed; that also
+   stored, appears in browse results and keeps its audit log. Nothing is physically removed; that also
    keeps the audit log complete. Deletion is exposed as `POST /{name}/delete`, not HTTP `DELETE`,
    because it carries a mandatory body (the reason), and bodies on `DELETE` are poorly supported by
    clients and proxies.
@@ -251,19 +250,20 @@ each.
 
 5. **Name** is required and at most 255 characters. It is stored exactly as sent (not trimmed);
    a whitespace-only name counts as blank.
-6. **Name is the public identifier.** All operations on a single request (read, edit, every
-   transition, audit log) address it by name, so the name must be usable in a URL path: it must not
-   contain `/`, `\` or `;` and must not be `.`, `..` or `browse`. Servers treat the first ones
-   specially in paths, and `GET /api/requests/browse` is the browse endpoint, so such a request
-   could be created but never reached. The numeric `id` remains the internal key.
+6. **Name is the public identifier.** All operations on a single request (edit, every transition,
+   audit log) address it by name, so the name must be usable in a URL path: it must not contain
+   `/`, `\` or `;` and must not be `.` or `..`. Servers treat these specially in paths, so such a
+   request could be created but never reached. The numeric `id` remains the internal key. There is
+   no endpoint to read a single request; requests are read through `browse`, and every action
+   returns the updated request.
 7. **Name is unique among requests that are not deleted**, compared exactly (case-sensitive,
    including spaces). Creating a duplicate returns `409 Conflict`. Names of rejected and published
    requests stay reserved; the name of a **deleted** request can be reused. Uniqueness is enforced
    by a database unique constraint (on an internal `active_name` column that is cleared on
    deletion), so it also holds when two identical requests are created at the same moment.
-8. **Lookup by name** returns the current request with that name. If the name only belongs to
-   deleted requests, it returns the most recently deleted one, so a deleted request stays readable
-   until its name is reused. After reuse, older deleted requests with that name are still stored and
+8. **Addressing by name** targets the current request with that name. If the name only belongs to
+   deleted requests, it targets the most recently deleted one, so its audit log stays reachable
+   until the name is reused. After reuse, older deleted requests with that name are still stored and
    listed by `GET /api/requests/browse`, but can no longer be addressed by name.
 9. **Name is immutable.** Only the content can be edited. A `name` sent to the edit endpoint is
    ignored.

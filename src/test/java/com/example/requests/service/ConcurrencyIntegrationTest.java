@@ -75,7 +75,7 @@ class ConcurrencyIntegrationTest {
 		assertThat(expectedFailures).hasValue(THREADS - 1);
 		assertThat(service.auditLog(name)).hasSize(4).last().extracting(StateChange::action)
 				.isIn(RequestAction.PUBLISH, RequestAction.REJECT);
-		assertThat(service.get(name).state()).isIn(RequestState.PUBLISHED, RequestState.REJECTED);
+		assertThat(service.auditLog(name).get(3).toState()).isIn(RequestState.PUBLISHED, RequestState.REJECTED);
 	}
 
 	@Test
