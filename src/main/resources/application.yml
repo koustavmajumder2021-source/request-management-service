@@ -1,9 +1,9 @@
 spring:
   application:
     name: request-management-service
-  # In-memory H2 by default; activate the "postgres" profile for PostgreSQL.
+  # File-based H2 by default (data survives restarts); activate the "postgres" profile for PostgreSQL.
   datasource:
-    url: jdbc:h2:mem:requests;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:file:./data/requests;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;AUTO_SERVER=TRUE
     username: sa
     password:
   jpa:

@@ -33,8 +33,9 @@ Requirements: JDK 17 or newer. Maven is not needed; the wrapper downloads it.
 ./mvnw spring-boot:run
 ```
 
-This starts the service on port 8080 with an in-memory H2 database (PostgreSQL mode).
-To run against PostgreSQL instead:
+This starts the service on port 8080 with a file-based H2 database (PostgreSQL mode) in `./data/`,
+so requests, ids and publication numbers survive restarts. Delete that folder to start from an empty
+database. To run against PostgreSQL instead:
 
 ```bash
 docker compose up -d
@@ -210,6 +211,10 @@ domain enforces the same rules because it must not rely on its caller.
 - Keyset pagination for deep pages; a `pg_trgm` index for substring search on large data sets.
 - Transactional outbox to publish lifecycle events to other services.
 - Authentication and per-user audit (`changedBy`).
+- UUID v7 request ids instead of auto-increment. They are time-ordered (index-friendly), not
+  enumerable through the API, and can be generated in the domain. The specification sets no
+  requirement on the id, so the simpler sequential id was kept. The publication number stays
+  numeric either way, as required.
 
 ## Assumptions
 
@@ -286,8 +291,11 @@ each.
 ### Technical
 
 22. **Database:** PostgreSQL is the target. H2 in PostgreSQL compatibility mode is the default for
-    running and testing without any setup. The schema is managed by Flyway and is identical for
-    both. Testcontainers would allow testing against real PostgreSQL but requires Docker on the
+    running without any setup. It is file-based (`./data/`, git-ignored, so no database is
+    submitted) rather than in-memory: an in-memory database would lose the publication-number
+    sequence on restart and could then issue the same number twice. Tests use a separate in-memory
+    H2 database so they stay fast and isolated. The schema is managed by Flyway and is identical
+    everywhere. Testcontainers would allow testing against real PostgreSQL but requires Docker on the
     build machine, which the evaluation environment can't be assumed to have.
 23. **No message broker, cache or service split.** No requirement involves asynchronous
     processing, external consumers, or load beyond what one relational database handles. Each would
