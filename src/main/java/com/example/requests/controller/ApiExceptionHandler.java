@@ -101,18 +101,6 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 	}
 
 	/**
-	 * 500 for anything unexpected. The details are logged, not returned, so internals do not leak to clients.
-	 */
-	@ExceptionHandler(Exception.class)
-	ProblemDetail unexpected(Exception ex) {
-		log.error("Unexpected error while handling request", ex);
-		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR,
-				"An unexpected error occurred");
-		problem.setTitle("Internal server error");
-		return problem;
-	}
-
-	/**
 	 * 400 with one message per invalid field of the request body.
 	 */
 	@Override
