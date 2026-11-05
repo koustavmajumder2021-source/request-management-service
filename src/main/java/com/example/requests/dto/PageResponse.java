@@ -4,44 +4,10 @@ import com.example.requests.model.PageResult;
 
 import java.util.List;
 
-public class PageResponse<T> {
-
-	private final List<T> items;
-	private final int page;
-	private final int size;
-	private final long totalItems;
-	private final int totalPages;
-
-	public PageResponse(List<T> items, int page, int size, long totalItems, int totalPages) {
-		this.items = items;
-		this.page = page;
-		this.size = size;
-		this.totalItems = totalItems;
-		this.totalPages = totalPages;
-	}
+public record PageResponse<T>(List<T> items, int page, int size, long totalItems, int totalPages) {
 
 	public static <T> PageResponse<T> from(PageResult<T> result) {
 		return new PageResponse<>(result.items(), result.page(), result.size(), result.totalItems(),
 				result.totalPages());
-	}
-
-	public List<T> getItems() {
-		return items;
-	}
-
-	public int getPage() {
-		return page;
-	}
-
-	public int getSize() {
-		return size;
-	}
-
-	public long getTotalItems() {
-		return totalItems;
-	}
-
-	public int getTotalPages() {
-		return totalPages;
 	}
 }

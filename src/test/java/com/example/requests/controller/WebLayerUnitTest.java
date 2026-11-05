@@ -44,7 +44,7 @@ class WebLayerUnitTest {
 
 	@Test
 	void paginationPropertiesAreValidated() {
-		assertThat(new PaginationProperties(10, 100).getDefaultSize()).isEqualTo(10);
+		assertThat(new PaginationProperties(10, 100).defaultSize()).isEqualTo(10);
 		assertThatThrownBy(() -> new PaginationProperties(0, 100)).isInstanceOf(IllegalArgumentException.class);
 		assertThatThrownBy(() -> new PaginationProperties(50, 10)).isInstanceOf(IllegalArgumentException.class);
 	}
