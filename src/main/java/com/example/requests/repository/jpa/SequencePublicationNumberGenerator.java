@@ -1,6 +1,6 @@
 package com.example.requests.repository.jpa;
 
-import com.example.requests.repository.PublicationNumberGenerator;
+import com.example.requests.model.PublicationNumberGenerator;
 import jakarta.persistence.EntityManager;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.springframework.stereotype.Component;

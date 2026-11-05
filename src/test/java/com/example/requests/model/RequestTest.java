@@ -3,7 +3,6 @@ package com.example.requests.model;
 import com.example.requests.exception.ContentNotEditableException;
 import com.example.requests.exception.DomainValidationException;
 import com.example.requests.exception.InvalidStateTransitionException;
-import com.example.requests.repository.PublicationNumberGenerator;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;

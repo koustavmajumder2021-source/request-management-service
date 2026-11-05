@@ -1,4 +1,4 @@
-package com.example.requests.repository;
+package com.example.requests.model;
 
 @FunctionalInterface
 public interface PublicationNumberGenerator {

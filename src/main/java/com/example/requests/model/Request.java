@@ -3,7 +3,6 @@ package com.example.requests.model;
 import com.example.requests.exception.ContentNotEditableException;
 import com.example.requests.exception.DomainValidationException;
 import com.example.requests.exception.InvalidStateTransitionException;
-import com.example.requests.repository.PublicationNumberGenerator;
 
 import java.time.Instant;
 import java.util.Objects;

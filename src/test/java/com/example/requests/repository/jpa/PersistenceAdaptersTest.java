@@ -3,6 +3,7 @@ package com.example.requests.repository.jpa;
 import com.example.requests.exception.DuplicateRequestNameException;
 import com.example.requests.model.PageQuery;
 import com.example.requests.model.PageResult;
+import com.example.requests.model.PublicationNumberGenerator;
 import com.example.requests.model.Request;
 import com.example.requests.model.RequestAction;
 import com.example.requests.model.RequestFilter;
