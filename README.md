@@ -165,8 +165,9 @@ The domain model (`model` and `exception`) has no framework dependencies: it is 
 not import Spring, JPA or any other layer of the project. Persistence sits behind interfaces in
 `repository/`, implemented by JPA adapters in `repository/jpa/`; the one thing the model itself
 needs from outside, a source of publication numbers, is the `PublicationNumberGenerator` interface
-in `model/`, implemented by a database sequence in `repository/jpa/`. Only `repository.jpa`,
-`controller` and `config` depend on infrastructure.
+in `model/`, implemented by a database sequence in `repository/jpa/`. `model`, `exception` and the
+`repository` interfaces are free of any framework; `service` uses Spring only for transactions and
+logging, `dto` only carries Bean Validation annotations, and JPA appears only in `repository.jpa`.
 
 ### Key decisions
 
