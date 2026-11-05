@@ -6,6 +6,8 @@ import com.example.requests.exception.DomainValidationException;
 import com.example.requests.exception.DuplicateRequestNameException;
 import com.example.requests.exception.InvalidStateTransitionException;
 import com.example.requests.exception.RequestNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -28,6 +30,8 @@ import java.util.Map;
  */
 @RestControllerAdvice
 class ApiExceptionHandler extends ResponseEntityExceptionHandler {
+
+	private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
 	/**
 	 * 404 for an unknown request name.
@@ -82,6 +86,7 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 	 */
 	@ExceptionHandler(OptimisticLockingFailureException.class)
 	ProblemDetail concurrentModification(OptimisticLockingFailureException ex) {
+		log.warn("Concurrent modification detected: {}", ex.getMessage());
 		return problem(HttpStatus.CONFLICT, "Concurrent modification",
 				"The request was modified by another operation; reload it and retry");
 	}
@@ -93,6 +98,18 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 	@ExceptionHandler(DomainException.class)
 	ProblemDetail businessRuleViolation(DomainException ex) {
 		return problem(HttpStatus.UNPROCESSABLE_CONTENT, "Business rule violation", ex.getMessage());
+	}
+
+	/**
+	 * 500 for anything unexpected. The details are logged, not returned, so internals do not leak to clients.
+	 */
+	@ExceptionHandler(Exception.class)
+	ProblemDetail unexpected(Exception ex) {
+		log.error("Unexpected error while handling request", ex);
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR,
+				"An unexpected error occurred");
+		problem.setTitle("Internal server error");
+		return problem;
 	}
 
 	/**
@@ -125,7 +142,9 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 		return ResponseEntity.badRequest().body(problem);
 	}
 
+	/** Client errors are expected API usage, so they are logged at debug level only. */
 	private static ProblemDetail problem(HttpStatus status, String title, String detail) {
+		log.debug("Rejected request with {} {}: {}", status.value(), title, detail);
 		ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
 		problem.setTitle(title);
 		return problem;

@@ -43,6 +43,15 @@ class WebLayerUnitTest {
 	}
 
 	@Test
+	void unexpectedErrorIs500WithoutLeakingDetails() {
+		var problem = new ApiExceptionHandler().unexpected(new IllegalStateException("database password is wrong"));
+
+		assertThat(problem.getStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR.value());
+		assertThat(problem.getTitle()).isEqualTo("Internal server error");
+		assertThat(problem.getDetail()).isEqualTo("An unexpected error occurred").doesNotContain("password");
+	}
+
+	@Test
 	void paginationPropertiesAreValidated() {
 		assertThat(new PaginationProperties(10, 100).defaultSize()).isEqualTo(10);
 		assertThatThrownBy(() -> new PaginationProperties(0, 100)).isInstanceOf(IllegalArgumentException.class);

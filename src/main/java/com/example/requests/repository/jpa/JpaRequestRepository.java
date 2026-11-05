@@ -8,6 +8,8 @@ import com.example.requests.model.RequestFilter;
 import com.example.requests.model.RequestState;
 import com.example.requests.repository.RequestRepository;
 import org.hibernate.exception.ConstraintViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -22,6 +24,8 @@ import java.util.Optional;
 
 @Repository
 class JpaRequestRepository implements RequestRepository {
+
+	private static final Logger log = LoggerFactory.getLogger(JpaRequestRepository.class);
 
 	private final RequestJpaRepository jpa;
 
@@ -52,6 +56,7 @@ class JpaRequestRepository implements RequestRepository {
 		}
 		catch (DataIntegrityViolationException ex) {
 			if (violates(ex, RequestEntity.UNIQUE_ACTIVE_NAME)) {
+				log.warn("Concurrent create of request '{}' rejected by the unique name constraint", request.name());
 				throw new DuplicateRequestNameException(request.name());
 			}
 			throw ex;
