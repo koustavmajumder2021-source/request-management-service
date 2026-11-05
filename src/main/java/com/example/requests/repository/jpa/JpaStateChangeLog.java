@@ -5,6 +5,7 @@ import com.example.requests.repository.StateChangeLog;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.UUID;
 
 @Repository
 class JpaStateChangeLog implements StateChangeLog {
@@ -22,7 +23,7 @@ class JpaStateChangeLog implements StateChangeLog {
 	}
 
 	@Override
-	public List<StateChange> findByRequestId(long requestId) {
+	public List<StateChange> findByRequestId(UUID requestId) {
 		return jpa.findByRequestIdOrderByIdAsc(requestId).stream()
 				.map(e -> new StateChange(e.getRequestId(), e.getAction(), e.getFromState(), e.getToState(),
 						e.getReason(), e.getOccurredAt()))

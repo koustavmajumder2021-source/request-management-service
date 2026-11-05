@@ -6,7 +6,7 @@ import com.example.requests.exception.InvalidStateTransitionException;
 
 import java.time.Instant;
 import java.util.Objects;
-import java.util.Set;
+import java.util.UUID;
 
 /**
  * Request aggregate. Owns all lifecycle invariants; has no framework dependencies.
@@ -17,10 +17,7 @@ public final class Request {
 	public static final int MAX_CONTENT_LENGTH = 10_000;
 	public static final int MAX_REASON_LENGTH = 1_000;
 
-	/** Path segments that URLs resolve as "current" and "parent" directory. */
-	private static final Set<String> RESERVED_NAMES = Set.of(".", "..");
-
-	private final Long id;
+	private final UUID id;
 	private final String name;
 	private String content;
 	private RequestState state;
@@ -29,7 +26,7 @@ public final class Request {
 	private final Instant createdAt;
 	private Instant updatedAt;
 
-	private Request(Long id, String name, String content, RequestState state, Long publicationNumber,
+	private Request(UUID id, String name, String content, RequestState state, Long publicationNumber,
 			String reason, Instant createdAt, Instant updatedAt) {
 		this.id = id;
 		this.name = name;
@@ -42,19 +39,19 @@ public final class Request {
 	}
 
 	/**
-	 * Creates a new, not yet persisted request in the lifecycle's initial state.
-	 * Name and content are stored exactly as given. The name identifies the request in URLs, so it
-	 * must not contain {@code /}, {@code \} or {@code ;} and must not be {@code .} or {@code ..}.
+	 * Creates a new, not yet persisted request in the lifecycle's initial state. The request gets its
+	 * identity here, as a random UUID, so it is identifiable before it is stored. Name and content are
+	 * stored exactly as given; names do not have to be unique.
 	 *
 	 * @throws DomainValidationException if the name or content is invalid
 	 */
 	public static Request create(String name, String content, RequestLifecycle lifecycle, Instant now) {
-		return new Request(null, requireValidName(name),
+		return new Request(UUID.randomUUID(), requireText(name, "name", MAX_NAME_LENGTH),
 				requireText(content, "content", MAX_CONTENT_LENGTH), lifecycle.initialState(), null, null, now, now);
 	}
 
 	/** Rehydrates a persisted request; invariants are not re-validated. */
-	public static Request restore(long id, String name, String content, RequestState state, Long publicationNumber,
+	public static Request restore(UUID id, String name, String content, RequestState state, Long publicationNumber,
 			String reason, Instant createdAt, Instant updatedAt) {
 		return new Request(id, name, content, state, publicationNumber, reason, createdAt, updatedAt);
 	}
@@ -110,15 +107,6 @@ public final class Request {
 		return requireText(reason, "reason", MAX_REASON_LENGTH).strip();
 	}
 
-	private static String requireValidName(String name) {
-		String value = requireText(name, "name", MAX_NAME_LENGTH);
-		if (RESERVED_NAMES.contains(value) || value.chars().anyMatch(c -> c == '/' || c == '\\' || c == ';')) {
-			throw new DomainValidationException("name",
-					"must not contain '/', '\\' or ';' and must not be '.' or '..'");
-		}
-		return value;
-	}
-
 	private static String requireText(String value, String field, int maxLength) {
 		if (value == null || value.isBlank()) {
 			throw new DomainValidationException(field, "must not be blank");
@@ -129,7 +117,7 @@ public final class Request {
 		return value;
 	}
 
-	public Long id() {
+	public UUID id() {
 		return id;
 	}
 
@@ -167,7 +155,7 @@ public final class Request {
 
 	@Override
 	public boolean equals(Object o) {
-		return this == o || (o instanceof Request other && id != null && id.equals(other.id));
+		return this == o || (o instanceof Request other && id.equals(other.id));
 	}
 
 	@Override

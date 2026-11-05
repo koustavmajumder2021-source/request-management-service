@@ -1,8 +1,10 @@
 package com.example.requests.exception;
 
+import java.util.UUID;
+
 public class RequestNotFoundException extends DomainException {
 
-	public RequestNotFoundException(String name) {
-		super("Request '" + name + "' not found");
+	public RequestNotFoundException(UUID id) {
+		super("Request " + id + " not found");
 	}
 }

@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/requests")
@@ -72,63 +73,71 @@ class RequestController {
 	}
 
 	/**
+	 * Returns a single request, or 404 if it does not exist.
+	 */
+	@GetMapping("/{id}")
+	RequestResponse get(@PathVariable UUID id) {
+		return toResponse(service.get(id));
+	}
+
+	/**
 	 * Replaces the content. Allowed only in CREATED and VERIFIED, otherwise 409.
 	 */
-	@PatchMapping("/{name}")
-	RequestResponse editContent(@PathVariable String name, @Valid @RequestBody UpdateContentBody body) {
-		return toResponse(service.editContent(name, body.content()));
+	@PatchMapping("/{id}")
+	RequestResponse editContent(@PathVariable UUID id, @Valid @RequestBody UpdateContentBody body) {
+		return toResponse(service.editContent(id, body.content()));
 	}
 
 	/**
 	 * CREATED → VERIFIED.
 	 */
-	@PostMapping("/{name}/verify")
-	RequestResponse verify(@PathVariable String name) {
-		return transition(name, RequestAction.VERIFY, null);
+	@PostMapping("/{id}/verify")
+	RequestResponse verify(@PathVariable UUID id) {
+		return transition(id, RequestAction.VERIFY, null);
 	}
 
 	/**
 	 * VERIFIED → ACCEPTED.
 	 */
-	@PostMapping("/{name}/accept")
-	RequestResponse accept(@PathVariable String name) {
-		return transition(name, RequestAction.ACCEPT, null);
+	@PostMapping("/{id}/accept")
+	RequestResponse accept(@PathVariable UUID id) {
+		return transition(id, RequestAction.ACCEPT, null);
 	}
 
 	/**
 	 * ACCEPTED → PUBLISHED, assigning the publication number.
 	 */
-	@PostMapping("/{name}/publish")
-	RequestResponse publish(@PathVariable String name) {
-		return transition(name, RequestAction.PUBLISH, null);
+	@PostMapping("/{id}/publish")
+	RequestResponse publish(@PathVariable UUID id) {
+		return transition(id, RequestAction.PUBLISH, null);
 	}
 
 	/**
 	 * VERIFIED or ACCEPTED → REJECTED. A reason is mandatory.
 	 */
-	@PostMapping("/{name}/reject")
-	RequestResponse reject(@PathVariable String name, @Valid @RequestBody ReasonBody body) {
-		return transition(name, RequestAction.REJECT, body.reason());
+	@PostMapping("/{id}/reject")
+	RequestResponse reject(@PathVariable UUID id, @Valid @RequestBody ReasonBody body) {
+		return transition(id, RequestAction.REJECT, body.reason());
 	}
 
 	/**
-	 * CREATED → DELETED. A reason is mandatory. This is a soft delete: the request remains queryable.
+	 * CREATED → DELETED. A reason is mandatory. This is a soft delete: the request remains stored and readable.
 	 */
-	@PostMapping("/{name}/delete")
-	RequestResponse delete(@PathVariable String name, @Valid @RequestBody ReasonBody body) {
-		return transition(name, RequestAction.DELETE, body.reason());
+	@PostMapping("/{id}/delete")
+	RequestResponse delete(@PathVariable UUID id, @Valid @RequestBody ReasonBody body) {
+		return transition(id, RequestAction.DELETE, body.reason());
 	}
 
 	/**
 	 * Returns the audit log of the request, oldest first.
 	 */
-	@GetMapping("/{name}/audit-log")
-	List<StateChangeResponse> auditLog(@PathVariable String name) {
-		return service.auditLog(name).stream().map(StateChangeResponse::from).toList();
+	@GetMapping("/{id}/audit-log")
+	List<StateChangeResponse> auditLog(@PathVariable UUID id) {
+		return service.auditLog(id).stream().map(StateChangeResponse::from).toList();
 	}
 
-	private RequestResponse transition(String name, RequestAction action, String reason) {
-		return toResponse(service.transition(name, action, reason));
+	private RequestResponse transition(UUID id, RequestAction action, String reason) {
+		return toResponse(service.transition(id, action, reason));
 	}
 
 	private RequestResponse toResponse(Request request) {

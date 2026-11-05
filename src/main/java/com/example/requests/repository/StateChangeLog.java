@@ -3,6 +3,7 @@ package com.example.requests.repository;
 import com.example.requests.model.StateChange;
 
 import java.util.List;
+import java.util.UUID;
 
 /** Append-only audit log. */
 public interface StateChangeLog {
@@ -16,5 +17,5 @@ public interface StateChangeLog {
 	/**
 	 * @return all changes of the request, oldest first; empty if there are none
 	 */
-	List<StateChange> findByRequestId(long requestId);
+	List<StateChange> findByRequestId(UUID requestId);
 }

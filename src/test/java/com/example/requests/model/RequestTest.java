@@ -11,6 +11,7 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.Instant;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,6 +21,7 @@ class RequestTest {
 
 	private static final Instant CREATED_AT = Instant.parse("2026-01-01T10:00:00Z");
 	private static final Instant LATER = Instant.parse("2026-01-02T10:00:00Z");
+	private static final UUID ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
 	private final RequestLifecycle lifecycle = RequestLifecycle.standard();
 	private final AtomicLong numbers = new AtomicLong(100);
@@ -31,7 +33,7 @@ class RequestTest {
 
 	private static Request inState(RequestState state) {
 		Long number = state == RequestState.PUBLISHED ? 7L : null;
-		return Request.restore(1L, "name", "content", state, number, null, CREATED_AT, CREATED_AT);
+		return Request.restore(ID, "name", "content", state, number, null, CREATED_AT, CREATED_AT);
 	}
 
 	@Nested
@@ -41,7 +43,7 @@ class RequestTest {
 		void createsRequestInInitialState() {
 			Request request = Request.create("Grant", "Body", lifecycle, CREATED_AT);
 
-			assertThat(request.id()).isNull();
+			assertThat(request.id()).isNotNull();
 			assertThat(request.name()).isEqualTo("Grant");
 			assertThat(request.content()).isEqualTo("Body");
 			assertThat(request.state()).isEqualTo(RequestState.CREATED);
@@ -49,6 +51,15 @@ class RequestTest {
 			assertThat(request.reason()).isNull();
 			assertThat(request.createdAt()).isEqualTo(CREATED_AT);
 			assertThat(request.updatedAt()).isEqualTo(CREATED_AT);
+		}
+
+		@Test
+		void eachCreatedRequestGetsItsOwnId() {
+			Request first = Request.create("Grant", "Body", lifecycle, CREATED_AT);
+			Request second = Request.create("Grant", "Body", lifecycle, CREATED_AT);
+
+			assertThat(first.id()).isNotEqualTo(second.id());
+			assertThat(first).isNotEqualTo(second);
 		}
 
 		@Test
@@ -78,16 +89,8 @@ class RequestTest {
 		}
 
 		@ParameterizedTest
-		@ValueSource(strings = {"a/b", "a\\b", "a;b", ".", ".."})
-		void rejectsNamesThatCannotBeUsedInUrls(String name) {
-			assertThatThrownBy(() -> Request.create(name, "Body", lifecycle, CREATED_AT))
-					.isInstanceOfSatisfying(DomainValidationException.class,
-							ex -> assertThat(ex.field()).isEqualTo("name"));
-		}
-
-		@ParameterizedTest
-		@ValueSource(strings = {"a.b", "...", "Solar panels", "x-y_z 2026", "Ünïcødé", "browse", "Browse"})
-		void acceptsOtherNames(String name) {
+		@ValueSource(strings = {"a/b", "a\\b", "a;b", ".", "..", "Solar panels", "x-y_z 2026", "Ünïcødé", "browse"})
+		void acceptsAnyNonBlankName(String name) {
 			assertThat(Request.create(name, "Body", lifecycle, CREATED_AT).name()).isEqualTo(name);
 		}
 
@@ -117,7 +120,7 @@ class RequestTest {
 			Request request = inState(RequestState.CREATED);
 
 			assertThat(StateChange.creationOf(request)).isEqualTo(
-					new StateChange(1L, RequestAction.CREATE, null, RequestState.CREATED, null, CREATED_AT));
+					new StateChange(ID, RequestAction.CREATE, null, RequestState.CREATED, null, CREATED_AT));
 		}
 	}
 
@@ -170,7 +173,7 @@ class RequestTest {
 
 			StateChange change = request.apply(RequestAction.VERIFY, null, lifecycle, NO_NUMBER_EXPECTED, LATER);
 
-			assertThat(change).isEqualTo(new StateChange(1L, RequestAction.VERIFY, RequestState.CREATED,
+			assertThat(change).isEqualTo(new StateChange(ID, RequestAction.VERIFY, RequestState.CREATED,
 					RequestState.VERIFIED, null, LATER));
 			assertThat(request.state()).isEqualTo(RequestState.VERIFIED);
 			assertThat(request.updatedAt()).isEqualTo(LATER);
@@ -277,10 +280,9 @@ class RequestTest {
 	void equalityIsBasedOnIdentity() {
 		Request a = inState(RequestState.CREATED);
 		Request sameId = inState(RequestState.VERIFIED);
-		Request unsaved = Request.create("n", "c", lifecycle, CREATED_AT);
-		Request otherUnsaved = Request.create("n", "c", lifecycle, CREATED_AT);
+		Request created = Request.create("name", "content", lifecycle, CREATED_AT);
 
 		assertThat(a).isEqualTo(sameId).hasSameHashCodeAs(sameId);
-		assertThat(unsaved).isEqualTo(unsaved).isNotEqualTo(otherUnsaved).isNotEqualTo(a);
+		assertThat(created).isEqualTo(created).isNotEqualTo(a).isNotEqualTo("other type");
 	}
 }

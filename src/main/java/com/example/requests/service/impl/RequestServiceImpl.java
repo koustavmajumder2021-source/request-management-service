@@ -1,6 +1,5 @@
 package com.example.requests.service.impl;
 
-import com.example.requests.exception.DuplicateRequestNameException;
 import com.example.requests.exception.RequestNotFoundException;
 import com.example.requests.model.PageQuery;
 import com.example.requests.model.PageResult;
@@ -21,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Each use case runs in a single transaction so that a state change and its audit entry are
@@ -49,37 +49,39 @@ public class RequestServiceImpl implements RequestService {
 
 	@Override
 	public Request create(String name, String content) {
-		Request request = Request.create(name, content, lifecycle, clock.instant());
-		if (requests.existsActiveByName(request.name())) {
-			throw new DuplicateRequestNameException(request.name());
-		}
-		Request saved = requests.save(request);
+		Request saved = requests.save(Request.create(name, content, lifecycle, clock.instant()));
 		stateChangeLog.append(StateChange.creationOf(saved));
-		log.info("Created request '{}' (id {})", saved.name(), saved.id());
+		log.info("Created request {} ('{}')", saved.id(), saved.name());
 
 		return saved;
 	}
 
 	@Override
-	public Request editContent(String name, String content) {
-		Request request = load(name);
+	@Transactional(readOnly = true)
+	public Request get(UUID id) {
+		return load(id);
+	}
+
+	@Override
+	public Request editContent(UUID id, String content) {
+		Request request = load(id);
 		request.editContent(content, lifecycle, clock.instant());
 		Request saved = requests.save(request);
-		log.info("Updated content of request '{}'", name);
+		log.info("Updated content of request {}", id);
 		return saved;
 	}
 
 	@Override
-	public Request transition(String name, RequestAction action, String reason) {
-		Request request = load(name);
+	public Request transition(UUID id, RequestAction action, String reason) {
+		Request request = load(id);
 		StateChange change = request.apply(action, reason, lifecycle, publicationNumbers, clock.instant());
 		Request saved = requests.save(request);
 		stateChangeLog.append(change);
 		if (change.toState() == RequestState.PUBLISHED) {
-			log.info("Published request '{}' with publication number {}", name, saved.publicationNumber());
+			log.info("Published request {} with publication number {}", id, saved.publicationNumber());
 		}
 		else {
-			log.info("Request '{}' moved from {} to {} ({})", name, change.fromState(), change.toState(), action);
+			log.info("Request {} moved from {} to {} ({})", id, change.fromState(), change.toState(), action);
 		}
 		return saved;
 	}
@@ -93,12 +95,12 @@ public class RequestServiceImpl implements RequestService {
 
 	@Override
 	@Transactional(readOnly = true)
-	public List<StateChange> auditLog(String name) {
-		log.debug("Reading audit log of request '{}'", name);
-		return stateChangeLog.findByRequestId(load(name).id());
+	public List<StateChange> auditLog(UUID id) {
+		log.debug("Reading audit log of request {}", id);
+		return stateChangeLog.findByRequestId(load(id).id());
 	}
 
-	private Request load(String name) {
-		return requests.findByName(name).orElseThrow(() -> new RequestNotFoundException(name));
+	private Request load(UUID id) {
+		return requests.findById(id).orElseThrow(() -> new RequestNotFoundException(id));
 	}
 }

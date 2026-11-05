@@ -1,9 +1,7 @@
 package com.example.requests.repository.jpa;
 
-import com.example.requests.exception.DuplicateRequestNameException;
 import com.example.requests.model.PageQuery;
 import com.example.requests.model.PageResult;
-import com.example.requests.model.PublicationNumberGenerator;
 import com.example.requests.model.Request;
 import com.example.requests.model.RequestAction;
 import com.example.requests.model.RequestFilter;
@@ -20,6 +18,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -42,23 +41,35 @@ class PersistenceAdaptersTest {
 
 	private final RequestLifecycle lifecycle = RequestLifecycle.standard();
 
+	private int created;
+
+	/** Each request is created one second after the previous one, so creation order is well defined. */
 	private Request saveNew(String name) {
-		return repository.save(Request.create(name, "Body of " + name, lifecycle, NOW));
+		Instant createdAt = NOW.plusSeconds(created++);
+		return repository.save(Request.create(name, "Body of " + name, lifecycle, createdAt));
 	}
 
 	@Test
 	void savesAndReloadsAllFields() {
 		Request saved = saveNew("Grant");
 
-		assertThat(saved.id()).isNotNull();
-		assertThat(repository.findByName("Grant")).hasValueSatisfying(loaded -> {
+		assertThat(repository.findById(saved.id())).hasValueSatisfying(loaded -> {
 			assertThat(loaded.id()).isEqualTo(saved.id());
 			assertThat(loaded.name()).isEqualTo("Grant");
 			assertThat(loaded.content()).isEqualTo("Body of Grant");
 			assertThat(loaded.state()).isEqualTo(RequestState.CREATED);
-			assertThat(loaded.createdAt()).isEqualTo(NOW);
+			assertThat(loaded.createdAt()).isEqualTo(saved.createdAt());
 			assertThat(loaded.publicationNumber()).isNull();
 		});
+	}
+
+	@Test
+	void newRequestIsStoredUnderItsDomainAssignedId() {
+		UUID id = UUID.randomUUID();
+		Request request = Request.restore(id, "Grant", "Body", RequestState.CREATED, null, null, NOW, NOW);
+
+		assertThat(repository.save(request).id()).isEqualTo(id);
+		assertThat(repository.findById(id)).isPresent();
 	}
 
 	@Test
@@ -68,7 +79,7 @@ class PersistenceAdaptersTest {
 
 		repository.save(request);
 
-		assertThat(repository.findByName("Grant")).hasValueSatisfying(loaded -> {
+		assertThat(repository.findById(request.id())).hasValueSatisfying(loaded -> {
 			assertThat(loaded.state()).isEqualTo(RequestState.DELETED);
 			assertThat(loaded.reason()).isEqualTo("duplicate");
 			assertThat(loaded.updatedAt()).isEqualTo(NOW.plus(1, ChronoUnit.HOURS));
@@ -76,72 +87,19 @@ class PersistenceAdaptersTest {
 	}
 
 	@Test
-	void savingARequestThatNoLongerExistsFails() {
-		Request ghost = Request.restore(987_654L, "n", "c", RequestState.CREATED, null, null, NOW, NOW);
-
-		assertThatThrownBy(() -> repository.save(ghost)).isInstanceOf(IllegalStateException.class);
+	void findByIdOfUnknownRequestIsEmpty() {
+		assertThat(repository.findById(UUID.randomUUID())).isEmpty();
 	}
 
 	@Test
-	void findByNameOfUnknownRequestIsEmpty() {
-		assertThat(repository.findByName("does-not-exist")).isEmpty();
-	}
+	void requestsWithTheSameNameAreStoredSeparately() {
+		Request first = saveNew("Grant");
+		Request second = saveNew("Grant");
 
-	@Test
-	void existsActiveByNameIgnoresDeletedRequestsAndIsExact() {
-		Request active = saveNew("Active");
-		Request deleted = saveNew("Deleted");
-		deleted.apply(RequestAction.DELETE, "duplicate", lifecycle, generator, NOW);
-		repository.save(deleted);
-
-		assertThat(repository.existsActiveByName(active.name())).isTrue();
-		assertThat(repository.existsActiveByName("Deleted")).isFalse();
-		assertThat(repository.existsActiveByName("active")).isFalse();
-		assertThat(repository.existsActiveByName("does-not-exist")).isFalse();
-	}
-
-	@Test
-	void nameMustBeUniqueAmongRequestsThatAreNotDeleted() {
-		saveNew("Grant");
-
-		assertThatThrownBy(() -> saveNew("Grant"))
-				.isInstanceOf(DuplicateRequestNameException.class)
-				.hasMessage("A request named 'Grant' already exists");
-	}
-
-	@Test
-	void nameOfDeletedRequestCanBeReusedAndLookupReturnsTheNewRequest() {
-		Request deleted = saveNew("Grant");
-		deleted.apply(RequestAction.DELETE, "duplicate", lifecycle, generator, NOW);
-		repository.save(deleted);
-
-		Request reused = saveNew("Grant");
-
-		assertThat(reused.id()).isGreaterThan(deleted.id());
-		assertThat(repository.findByName("Grant")).hasValueSatisfying(found -> {
-			assertThat(found.id()).isEqualTo(reused.id());
-			assertThat(found.state()).isEqualTo(RequestState.CREATED);
-		});
-	}
-
-	@Test
-	void reusedNameIsReservedAgainWhileTheNewRequestIsActive() {
-		Request deleted = saveNew("Grant");
-		deleted.apply(RequestAction.DELETE, "duplicate", lifecycle, generator, NOW);
-		repository.save(deleted);
-		saveNew("Grant");
-
-		assertThatThrownBy(() -> saveNew("Grant")).isInstanceOf(DuplicateRequestNameException.class);
-	}
-
-	@Test
-	void deletedRequestIsFoundByNameUntilTheNameIsReused() {
-		Request deleted = saveNew("Grant");
-		deleted.apply(RequestAction.DELETE, "duplicate", lifecycle, generator, NOW);
-		repository.save(deleted);
-
-		assertThat(repository.findByName("Grant")).hasValueSatisfying(
-				found -> assertThat(found.state()).isEqualTo(RequestState.DELETED));
+		assertThat(first.id()).isNotEqualTo(second.id());
+		assertThat(repository.search(new RequestFilter("Grant", null), new PageQuery(0, 10)).items())
+				.extracting(Request::id)
+				.containsExactly(first.id(), second.id());
 	}
 
 	@Test
@@ -226,10 +184,10 @@ class PersistenceAdaptersTest {
 				RequestState.DELETED, "duplicate", NOW));
 
 		assertThat(stateChangeLog.findByRequestId(first.id())).containsExactly(
-				new StateChange(first.id(), RequestAction.CREATE, null, RequestState.CREATED, null, NOW),
+				new StateChange(first.id(), RequestAction.CREATE, null, RequestState.CREATED, null, first.createdAt()),
 				new StateChange(first.id(), RequestAction.DELETE, RequestState.CREATED, RequestState.DELETED,
 						"duplicate", NOW));
-		assertThat(stateChangeLog.findByRequestId(987_654L)).isEmpty();
+		assertThat(stateChangeLog.findByRequestId(UUID.randomUUID())).isEmpty();
 	}
 
 	private Request published(String name, long number) {

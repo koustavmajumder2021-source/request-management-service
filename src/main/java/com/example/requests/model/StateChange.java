@@ -1,6 +1,7 @@
 package com.example.requests.model;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /**
  * Audit log entry.
@@ -8,7 +9,7 @@ import java.time.Instant;
  * @param fromState {@code null} for {@code CREATE}
  */
 public record StateChange(
-		Long requestId,
+		UUID requestId,
 		RequestAction action,
 		RequestState fromState,
 		RequestState toState,
@@ -16,7 +17,7 @@ public record StateChange(
 		Instant occurredAt) {
 
 	/**
-	 * @return the CREATE entry for a request that has just been persisted
+	 * @return the CREATE entry for a newly created request
 	 */
 	public static StateChange creationOf(Request request) {
 		return new StateChange(request.id(), RequestAction.CREATE, null, request.state(), null, request.createdAt());
