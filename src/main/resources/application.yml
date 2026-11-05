@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: request-management-service
+  # File-based H2 by default (data survives restarts); activate the "postgres" profile for PostgreSQL.
+  datasource:
+    url: jdbc:h2:file:./data/requests;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;AUTO_SERVER=TRUE
+    username: sa
+    password:
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Hibernate creates and evolves the tables from the entity mappings.
+      ddl-auto: update
+  sql:
+    init:
+      # schema.sql only creates the publication-number sequence, which Hibernate does not generate.
+      mode: always
+
+app:
+  pagination:
+    default-size: 10
+    max-size: 100
+
+---
+spring:
+  config:
+    activate:
+      on-profile: postgres
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/requests}
+    username: ${DB_USERNAME:requests}
+    password: ${DB_PASSWORD:requests}
