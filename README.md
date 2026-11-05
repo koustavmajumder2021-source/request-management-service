@@ -36,14 +36,14 @@ Requirements: JDK 17 or newer. Maven is not needed; the wrapper downloads it.
 
 This starts the service on port 8080 with a file-based H2 database (PostgreSQL mode) in `./data/`,
 so requests, ids and publication numbers survive restarts. Delete that folder to start from an empty
-database. To run against PostgreSQL instead:
+database. To run against an existing PostgreSQL database instead:
 
 ```bash
-docker compose up -d
-./mvnw spring-boot:run -Dspring-boot.run.profiles=postgres
+DB_URL=jdbc:postgresql://localhost:5432/requests DB_USERNAME=requests DB_PASSWORD=requests \
+  ./mvnw spring-boot:run -Dspring-boot.run.profiles=postgres
 ```
 
-Connection settings can be overridden with `DB_URL`, `DB_USERNAME` and `DB_PASSWORD`.
+The values above are the profile's defaults; set the variables to point at any PostgreSQL instance.
 
 API documentation: http://localhost:8080/swagger-ui.html (OpenAPI JSON at `/v3/api-docs`).
 
