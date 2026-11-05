@@ -3,7 +3,6 @@ package com.example.requests.controller;
 import com.example.requests.exception.ContentNotEditableException;
 import com.example.requests.exception.DomainException;
 import com.example.requests.exception.DomainValidationException;
-import com.example.requests.exception.DuplicateRequestNameException;
 import com.example.requests.exception.InvalidStateTransitionException;
 import com.example.requests.exception.RequestNotFoundException;
 import org.slf4j.Logger;
@@ -34,19 +33,11 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 	private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
 	/**
-	 * 404 for an unknown request name.
+	 * 404 for an unknown request id.
 	 */
 	@ExceptionHandler(RequestNotFoundException.class)
 	ProblemDetail notFound(RequestNotFoundException ex) {
 		return problem(HttpStatus.NOT_FOUND, "Request not found", ex.getMessage());
-	}
-
-	/**
-	 * 409 when the name is already used by a request that is not deleted.
-	 */
-	@ExceptionHandler(DuplicateRequestNameException.class)
-	ProblemDetail duplicateName(DuplicateRequestNameException ex) {
-		return problem(HttpStatus.CONFLICT, "Duplicate name", ex.getMessage());
 	}
 
 	/**

@@ -1,6 +1,5 @@
 package com.example.requests.service;
 
-import com.example.requests.exception.DuplicateRequestNameException;
 import com.example.requests.exception.InvalidStateTransitionException;
 import com.example.requests.model.RequestAction;
 import com.example.requests.model.RequestState;
@@ -13,6 +12,7 @@ import org.springframework.dao.ConcurrencyFailureException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -35,23 +35,23 @@ class ConcurrencyIntegrationTest {
 
 	@Test
 	void concurrentPublicationsOfDifferentRequestsGetUniqueNumbers() throws Exception {
-		List<String> names = new ArrayList<>();
+		List<UUID> ids = new ArrayList<>();
 		for (int i = 0; i < 20; i++) {
-			names.add(accepted("Concurrent " + i));
+			ids.add(accepted("Concurrent " + i));
 		}
 		Set<Long> numbers = ConcurrentHashMap.newKeySet();
 
-		runConcurrently(names.stream().<Callable<Void>>map(name -> () -> {
-			numbers.add(service.transition(name, RequestAction.PUBLISH, null).publicationNumber());
+		runConcurrently(ids.stream().<Callable<Void>>map(id -> () -> {
+			numbers.add(service.transition(id, RequestAction.PUBLISH, null).publicationNumber());
 			return null;
 		}).toList());
 
-		assertThat(numbers).hasSize(names.size());
+		assertThat(numbers).hasSize(ids.size());
 	}
 
 	@Test
 	void concurrentTransitionsOfTheSameRequestHaveExactlyOneWinner() throws Exception {
-		String name = accepted("Contended");
+		UUID id = accepted("Contended");
 		AtomicInteger successes = new AtomicInteger();
 		AtomicInteger expectedFailures = new AtomicInteger();
 		List<Callable<Void>> tasks = new ArrayList<>();
@@ -59,7 +59,7 @@ class ConcurrencyIntegrationTest {
 			RequestAction action = i % 2 == 0 ? RequestAction.PUBLISH : RequestAction.REJECT;
 			tasks.add(() -> {
 				try {
-					service.transition(name, action, "racing");
+					service.transition(id, action, "racing");
 					successes.incrementAndGet();
 				}
 				catch (InvalidStateTransitionException | ConcurrencyFailureException ex) {
@@ -73,40 +73,32 @@ class ConcurrencyIntegrationTest {
 
 		assertThat(successes).hasValue(1);
 		assertThat(expectedFailures).hasValue(THREADS - 1);
-		assertThat(service.auditLog(name)).hasSize(4).last().extracting(StateChange::action)
+		assertThat(service.auditLog(id)).hasSize(4).last().extracting(StateChange::action)
 				.isIn(RequestAction.PUBLISH, RequestAction.REJECT);
-		assertThat(service.auditLog(name).get(3).toState()).isIn(RequestState.PUBLISHED, RequestState.REJECTED);
+		assertThat(service.auditLog(id).get(3).toState()).isIn(RequestState.PUBLISHED, RequestState.REJECTED);
 	}
 
 	@Test
-	void concurrentCreationsWithTheSameNameHaveExactlyOneWinner() throws Exception {
-		AtomicInteger created = new AtomicInteger();
-		AtomicInteger duplicates = new AtomicInteger();
+	void concurrentCreationsWithTheSameNameAllSucceedWithDistinctIds() throws Exception {
+		Set<UUID> ids = ConcurrentHashMap.newKeySet();
 		List<Callable<Void>> tasks = new ArrayList<>();
 		for (int i = 0; i < THREADS; i++) {
 			tasks.add(() -> {
-				try {
-					service.create("Same name", "Body");
-					created.incrementAndGet();
-				}
-				catch (DuplicateRequestNameException ex) {
-					duplicates.incrementAndGet();
-				}
+				ids.add(service.create("Same name", "Body").id());
 				return null;
 			});
 		}
 
 		runConcurrently(tasks);
 
-		assertThat(created).hasValue(1);
-		assertThat(duplicates).hasValue(THREADS - 1);
+		assertThat(ids).hasSize(THREADS);
 	}
 
-	private String accepted(String name) {
-		service.create(name, "Body");
-		service.transition(name, RequestAction.VERIFY, null);
-		service.transition(name, RequestAction.ACCEPT, null);
-		return name;
+	private UUID accepted(String name) {
+		UUID id = service.create(name, "Body").id();
+		service.transition(id, RequestAction.VERIFY, null);
+		service.transition(id, RequestAction.ACCEPT, null);
+		return id;
 	}
 
 	private static void runConcurrently(List<Callable<Void>> tasks) throws Exception {

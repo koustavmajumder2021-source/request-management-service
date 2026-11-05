@@ -7,9 +7,10 @@ import com.example.requests.model.RequestState;
 
 import java.time.Instant;
 import java.util.Set;
+import java.util.UUID;
 
 public record RequestResponse(
-		long id,
+		UUID id,
 		String name,
 		String content,
 		RequestState state,

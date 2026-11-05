@@ -1,38 +1,29 @@
 package com.example.requests.repository;
 
-import com.example.requests.exception.DuplicateRequestNameException;
 import com.example.requests.model.PageQuery;
 import com.example.requests.model.PageResult;
 import com.example.requests.model.Request;
 import com.example.requests.model.RequestFilter;
 
 import java.util.Optional;
+import java.util.UUID;
 
 public interface RequestRepository {
 
 	/**
-	 * Inserts a new request (id {@code null}) or updates an existing one.
+	 * Inserts the request if it is new, otherwise updates it.
 	 *
-	 * @return the stored request, carrying the generated id for new requests
-	 * @throws DuplicateRequestNameException if another request that is not deleted has the same name; callers
-	 *                                       check {@link #existsActiveByName(String)} first, so this only
-	 *                                       happens when a concurrent create wins the race
+	 * @return the stored request
 	 */
 	Request save(Request request);
 
 	/**
-	 * @return whether a request with exactly this name exists and is not deleted
+	 * @return the request, or empty if none exists with this id
 	 */
-	boolean existsActiveByName(String name);
+	Optional<Request> findById(UUID id);
 
 	/**
-	 * @return the current request with this name; if the name only belongs to deleted requests, the most
-	 *         recently deleted one; empty if no request ever had this name
-	 */
-	Optional<Request> findByName(String name);
-
-	/**
-	 * Finds the requests matching {@code filter}, ordered by id so that paging is stable.
+	 * Finds the requests matching {@code filter}, ordered by creation time so that paging is stable.
 	 */
 	PageResult<Request> search(RequestFilter filter, PageQuery pageQuery);
 }

@@ -17,6 +17,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "request_state_changes",
@@ -28,7 +29,7 @@ class StateChangeEntity {
 	private Long id;
 
 	@Column(name = "request_id", nullable = false)
-	private Long requestId;
+	private UUID requestId;
 
 	/** Read-only; only declares the foreign key to {@code requests}. Writes go through {@link #requestId}. */
 	@ManyToOne(fetch = FetchType.LAZY)
@@ -57,7 +58,7 @@ class StateChangeEntity {
 	protected StateChangeEntity() {
 	}
 
-	StateChangeEntity(Long requestId, RequestAction action, RequestState fromState, RequestState toState,
+	StateChangeEntity(UUID requestId, RequestAction action, RequestState fromState, RequestState toState,
 			String reason, Instant occurredAt) {
 		this.requestId = requestId;
 		this.action = action;
@@ -67,7 +68,7 @@ class StateChangeEntity {
 		this.occurredAt = occurredAt;
 	}
 
-	Long getRequestId() {
+	UUID getRequestId() {
 		return requestId;
 	}
 

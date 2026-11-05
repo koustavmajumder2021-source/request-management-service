@@ -13,12 +13,15 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -34,6 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RequestApiIntegrationTest {
 
 	private static final String BASE = "/api/requests";
+	private static final String UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
 	@Autowired
 	private MockMvc mvc;
@@ -46,7 +50,7 @@ class RequestApiIntegrationTest {
 			String json = mvc.perform(post(BASE).contentType(MediaType.APPLICATION_JSON)
 							.content("{\"name\":\"  Grant  \",\"content\":\"Body\"}"))
 					.andExpect(status().isCreated())
-					.andExpect(jsonPath("$.id").isNumber())
+					.andExpect(jsonPath("$.id").value(matchesPattern(UUID_PATTERN)))
 					.andExpect(jsonPath("$.name").value("  Grant  "))
 					.andExpect(jsonPath("$.content").value("Body"))
 					.andExpect(jsonPath("$.state").value("CREATED"))
@@ -55,10 +59,28 @@ class RequestApiIntegrationTest {
 					.andExpect(jsonPath("$.contentEditable").value(true))
 					.andExpect(jsonPath("$.createdAt").value(notNullValue()))
 					.andReturn().getResponse().getContentAsString();
-			assertThat(((Number) JsonPath.read(json, "$.id")).longValue()).isPositive();
+			String id = JsonPath.read(json, "$.id");
 
-			mvc.perform(get(BASE + "/{name}/audit-log", "  Grant  ")).andExpect(status().isOk())
-					.andExpect(jsonPath("$[0].action").value("CREATE"));
+			read(id).andExpect(status().isOk()).andExpect(jsonPath("$.name").value("  Grant  "));
+		}
+
+		@Test
+		void requestsWithTheSameNameAreAllowed() throws Exception {
+			String first = create("Grant");
+			String second = create("Grant");
+
+			assertThat(first).isNotEqualTo(second);
+			browse("Grant")
+					.andExpect(jsonPath("$.totalItems").value(2))
+					.andExpect(jsonPath("$.items[*].id", contains(first, second)));
+		}
+
+		@ParameterizedTest
+		@ValueSource(strings = {"a/b", "a;b", "..", "browse"})
+		void anyNonBlankNameIsAccepted(String name) throws Exception {
+			String id = create(name);
+
+			read(id).andExpect(jsonPath("$.name").value(name));
 		}
 
 		@ParameterizedTest
@@ -94,70 +116,6 @@ class RequestApiIntegrationTest {
 		}
 
 		@Test
-		void duplicateNameIs409() throws Exception {
-			create("Grant");
-
-			mvc.perform(post(BASE).contentType(MediaType.APPLICATION_JSON)
-							.content("{\"name\":\"Grant\",\"content\":\"Other\"}"))
-					.andExpect(status().isConflict())
-					.andExpect(jsonPath("$.title").value("Duplicate name"))
-					.andExpect(jsonPath("$.detail").value("A request named 'Grant' already exists"));
-		}
-
-		@ParameterizedTest
-		@ValueSource(strings = {"REJECTED", "PUBLISHED"})
-		void nameStaysReservedAfterRejectionOrPublication(String endState) throws Exception {
-			String name = create("Grant");
-			act(name, "verify");
-			if (endState.equals("REJECTED")) {
-				actWithReason(name, "reject", "no");
-			}
-			else {
-				act(name, "accept");
-				act(name, "publish");
-			}
-
-			mvc.perform(post(BASE).contentType(MediaType.APPLICATION_JSON)
-							.content("{\"name\":\"Grant\",\"content\":\"Again\"}"))
-					.andExpect(status().isConflict());
-		}
-
-		@Test
-		void nameOfDeletedRequestCanBeReused() throws Exception {
-			create("Grant");
-			actWithReason("Grant", "delete", "duplicate");
-
-			mvc.perform(post(BASE).contentType(MediaType.APPLICATION_JSON)
-							.content("{\"name\":\"Grant\",\"content\":\"Second attempt\"}"))
-					.andExpect(status().isCreated())
-					.andExpect(jsonPath("$.state").value("CREATED"));
-			browse("Grant")
-					.andExpect(jsonPath("$.totalItems").value(2))
-					.andExpect(jsonPath("$.items[0].state").value("DELETED"))
-					.andExpect(jsonPath("$.items[1].content").value("Second attempt"));
-			mvc.perform(get(BASE + "/{name}/audit-log", "Grant")).andExpect(jsonPath("$", hasSize(1)));
-		}
-
-		@Test
-		void deletedRequestStaysAddressableUntilItsNameIsReused() throws Exception {
-			create("Grant");
-			actWithReason("Grant", "delete", "duplicate");
-
-			mvc.perform(get(BASE + "/{name}/audit-log", "Grant"))
-					.andExpect(status().isOk())
-					.andExpect(jsonPath("$[1].toState").value("DELETED"));
-		}
-
-		@ParameterizedTest
-		@ValueSource(strings = {"a/b", "a\\\\b", "a;b", ".", ".."})
-		void rejectsNamesThatCannotBeUsedInUrls(String name) throws Exception {
-			mvc.perform(post(BASE).contentType(MediaType.APPLICATION_JSON)
-							.content("{\"name\":\"" + name + "\",\"content\":\"Body\"}"))
-					.andExpect(status().isBadRequest())
-					.andExpect(jsonPath("$.errors.name").exists());
-		}
-
-		@Test
 		void rejectsTooLongName() throws Exception {
 			mvc.perform(post(BASE).contentType(MediaType.APPLICATION_JSON)
 							.content("{\"name\":\"" + "n".repeat(256) + "\",\"content\":\"Body\"}"))
@@ -185,48 +143,43 @@ class RequestApiIntegrationTest {
 	}
 
 	@Nested
-	class Addressing {
+	class Read {
 
 		@Test
-		void singleRequestIsNotReadableDirectly() throws Exception {
-			create("Grant");
+		void returnsRequestById() throws Exception {
+			String id = create("Grant");
 
-			mvc.perform(get(BASE + "/{name}", "Grant")).andExpect(status().isMethodNotAllowed());
+			read(id)
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.id").value(id))
+					.andExpect(jsonPath("$.name").value("Grant"));
 		}
 
 		@Test
-		void unknownNameIs404ProblemDetail() throws Exception {
-			mvc.perform(post(BASE + "/{name}/verify", "does-not-exist"))
+		void unknownIdIs404ProblemDetail() throws Exception {
+			String unknown = UUID.randomUUID().toString();
+
+			read(unknown)
 					.andExpect(status().isNotFound())
 					.andExpect(header().string("Content-Type", containsString("application/problem+json")))
 					.andExpect(jsonPath("$.title").value("Request not found"))
-					.andExpect(jsonPath("$.detail").value("Request 'does-not-exist' not found"));
+					.andExpect(jsonPath("$.detail").value("Request " + unknown + " not found"));
 		}
 
 		@Test
-		void nameWithSpacesIsAddressable() throws Exception {
-			create("Solar panels 2026");
+		void malformedIdIs400() throws Exception {
+			read("not-a-uuid").andExpect(status().isBadRequest());
+		}
 
-			act("Solar panels 2026", "verify")
+		@Test
+		void deletedRequestRemainsReadable() throws Exception {
+			String id = create("Grant");
+			actWithReason(id, "delete", "Duplicate");
+
+			read(id)
 					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.name").value("Solar panels 2026"));
-		}
-
-		@Test
-		void nameIsCaseSensitive() throws Exception {
-			create("Grant");
-
-			act("grant", "verify").andExpect(status().isNotFound());
-		}
-
-		@Test
-		void requestNamedBrowseIsAddressableAndBrowseStillWorks() throws Exception {
-			create("browse");
-
-			editContent("browse", "Updated").andExpect(status().isOk());
-			act("browse", "verify").andExpect(status().isOk());
-			mvc.perform(get(BASE + "/{name}/audit-log", "browse")).andExpect(jsonPath("$", hasSize(2)));
-			browse("browse").andExpect(jsonPath("$.items[0].content").value("Updated"));
+					.andExpect(jsonPath("$.state").value("DELETED"))
+					.andExpect(jsonPath("$.reason").value("Duplicate"));
 		}
 	}
 
@@ -235,38 +188,38 @@ class RequestApiIntegrationTest {
 
 		@Test
 		void editsInCreated() throws Exception {
-			String name = create("Grant");
+			String id = create("Grant");
 
-			editContent(name, "Updated").andExpect(status().isOk()).andExpect(jsonPath("$.content").value("Updated"));
+			editContent(id, "Updated").andExpect(status().isOk()).andExpect(jsonPath("$.content").value("Updated"));
 		}
 
 		@Test
 		void editsInVerified() throws Exception {
-			String name = create("Grant");
-			act(name, "verify");
+			String id = create("Grant");
+			act(id, "verify");
 
-			editContent(name, "Updated").andExpect(status().isOk()).andExpect(jsonPath("$.state").value("VERIFIED"));
+			editContent(id, "Updated").andExpect(status().isOk()).andExpect(jsonPath("$.state").value("VERIFIED"));
 		}
 
 		@Test
 		void refusesInAccepted() throws Exception {
-			String name = create("Grant");
-			act(name, "verify");
-			act(name, "accept");
+			String id = create("Grant");
+			act(id, "verify");
+			act(id, "accept");
 
-			editContent(name, "Updated")
+			editContent(id, "Updated")
 					.andExpect(status().isConflict())
 					.andExpect(jsonPath("$.title").value("Content not editable"))
 					.andExpect(jsonPath("$.detail").value("Content cannot be edited in state ACCEPTED"))
 					.andExpect(jsonPath("$.currentState").value("ACCEPTED"));
-			browse(name).andExpect(jsonPath("$.items[0].content").value("Body"));
+			read(id).andExpect(jsonPath("$.content").value("Body"));
 		}
 
 		@Test
 		void refusesInPublished() throws Exception {
-			String name = publish(create("Grant"));
+			String id = publish(create("Grant"));
 
-			editContent(name, "Updated").andExpect(status().isConflict());
+			editContent(id, "Updated").andExpect(status().isConflict());
 		}
 
 		@Test
@@ -283,26 +236,26 @@ class RequestApiIntegrationTest {
 
 		@Test
 		void requiresContent() throws Exception {
-			String name = create("Grant");
+			String id = create("Grant");
 
-			mvc.perform(patch(BASE + "/{name}", name).contentType(MediaType.APPLICATION_JSON).content("{\"content\":\" \"}"))
+			mvc.perform(patch(BASE + "/{id}", id).contentType(MediaType.APPLICATION_JSON).content("{\"content\":\" \"}"))
 					.andExpect(status().isBadRequest())
 					.andExpect(jsonPath("$.errors.content").exists());
 		}
 
 		@Test
 		void nameIsNotChangedEvenIfSent() throws Exception {
-			String name = create("Grant");
+			String id = create("Grant");
 
-			mvc.perform(patch(BASE + "/{name}", name).contentType(MediaType.APPLICATION_JSON)
+			mvc.perform(patch(BASE + "/{id}", id).contentType(MediaType.APPLICATION_JSON)
 							.content("{\"name\":\"Hacked\",\"content\":\"Updated\"}"))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.name").value("Grant"));
 		}
 
 		@Test
-		void unknownNameIs404() throws Exception {
-			editContent("does-not-exist", "Updated").andExpect(status().isNotFound());
+		void unknownIdIs404() throws Exception {
+			editContent(UUID.randomUUID().toString(), "Updated").andExpect(status().isNotFound());
 		}
 	}
 
@@ -311,13 +264,13 @@ class RequestApiIntegrationTest {
 
 		@Test
 		void happyPathToPublishedAssignsPublicationNumber() throws Exception {
-			String name = create("Grant");
+			String id = create("Grant");
 
-			act(name, "verify").andExpect(status().isOk()).andExpect(jsonPath("$.state").value("VERIFIED"))
+			act(id, "verify").andExpect(status().isOk()).andExpect(jsonPath("$.state").value("VERIFIED"))
 					.andExpect(jsonPath("$.allowedActions", contains("ACCEPT", "REJECT")));
-			act(name, "accept").andExpect(status().isOk()).andExpect(jsonPath("$.state").value("ACCEPTED"))
+			act(id, "accept").andExpect(status().isOk()).andExpect(jsonPath("$.state").value("ACCEPTED"))
 					.andExpect(jsonPath("$.contentEditable").value(false));
-			act(name, "publish").andExpect(status().isOk())
+			act(id, "publish").andExpect(status().isOk())
 					.andExpect(jsonPath("$.state").value("PUBLISHED"))
 					.andExpect(jsonPath("$.publicationNumber").isNumber())
 					.andExpect(jsonPath("$.allowedActions", empty()));
@@ -333,10 +286,10 @@ class RequestApiIntegrationTest {
 
 		@Test
 		void rejectFromVerifiedStoresReason() throws Exception {
-			String name = create("Grant");
-			act(name, "verify");
+			String id = create("Grant");
+			act(id, "verify");
 
-			actWithReason(name, "reject", "Out of scope")
+			actWithReason(id, "reject", "Out of scope")
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.state").value("REJECTED"))
 					.andExpect(jsonPath("$.reason").value("Out of scope"));
@@ -344,20 +297,20 @@ class RequestApiIntegrationTest {
 
 		@Test
 		void rejectFromAccepted() throws Exception {
-			String name = create("Grant");
-			act(name, "verify");
-			act(name, "accept");
+			String id = create("Grant");
+			act(id, "verify");
+			act(id, "accept");
 
-			actWithReason(name, "reject", "Budget cut").andExpect(jsonPath("$.state").value("REJECTED"));
+			actWithReason(id, "reject", "Budget cut").andExpect(jsonPath("$.state").value("REJECTED"));
 		}
 
 		@Test
 		void deleteFromCreatedIsSoftDelete() throws Exception {
-			String name = create("Grant");
+			String id = create("Grant");
 
-			actWithReason(name, "delete", "Duplicate").andExpect(status().isOk())
+			actWithReason(id, "delete", "Duplicate").andExpect(status().isOk())
 					.andExpect(jsonPath("$.state").value("DELETED"));
-			browse(name)
+			browse("Grant")
 					.andExpect(jsonPath("$.items[0].state").value("DELETED"))
 					.andExpect(jsonPath("$.items[0].reason").value("Duplicate"));
 		}
@@ -365,37 +318,37 @@ class RequestApiIntegrationTest {
 		@ParameterizedTest
 		@ValueSource(strings = {"reject", "delete"})
 		void reasonIsMandatory(String action) throws Exception {
-			String name = create("Grant");
+			String id = create("Grant");
 			if (action.equals("reject")) {
-				act(name, "verify");
+				act(id, "verify");
 			}
 
-			mvc.perform(post(BASE + "/{name}/{action}", name, action)).andExpect(status().isBadRequest());
-			mvc.perform(post(BASE + "/{name}/{action}", name, action).contentType(MediaType.APPLICATION_JSON).content("{}"))
+			mvc.perform(post(BASE + "/{id}/{action}", id, action)).andExpect(status().isBadRequest());
+			mvc.perform(post(BASE + "/{id}/{action}", id, action).contentType(MediaType.APPLICATION_JSON).content("{}"))
 					.andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors.reason").exists());
-			actWithReason(name, action, "   ").andExpect(status().isBadRequest());
-			actWithReason(name, action, "r".repeat(1001)).andExpect(status().isBadRequest());
+			actWithReason(id, action, "   ").andExpect(status().isBadRequest());
+			actWithReason(id, action, "r".repeat(1001)).andExpect(status().isBadRequest());
 		}
 
 		@Test
 		void illegalTransitionsAre409() throws Exception {
-			String name = create("Grant");
+			String id = create("Grant");
 
-			act(name, "accept").andExpect(status().isConflict())
+			act(id, "accept").andExpect(status().isConflict())
 					.andExpect(jsonPath("$.title").value("Invalid state transition"))
 					.andExpect(jsonPath("$.currentState").value("CREATED"))
 					.andExpect(jsonPath("$.action").value("ACCEPT"));
-			act(name, "publish").andExpect(status().isConflict());
-			actWithReason(name, "reject", "no").andExpect(status().isConflict());
+			act(id, "publish").andExpect(status().isConflict());
+			actWithReason(id, "reject", "no").andExpect(status().isConflict());
 		}
 
 		@Test
 		void cannotSkipVerificationOrRepeatAStep() throws Exception {
-			String name = create("Grant");
-			act(name, "verify");
+			String id = create("Grant");
+			act(id, "verify");
 
-			act(name, "verify").andExpect(status().isConflict());
-			actWithReason(name, "delete", "too late").andExpect(status().isConflict());
+			act(id, "verify").andExpect(status().isConflict());
+			actWithReason(id, "delete", "too late").andExpect(status().isConflict());
 		}
 
 		@Test
@@ -413,25 +366,32 @@ class RequestApiIntegrationTest {
 
 		@Test
 		void failedRepublishKeepsOriginalNumber() throws Exception {
-			String name = publish(create("Grant"));
-			long number = publicationNumberOf(name);
+			String id = publish(create("Grant"));
+			long number = publicationNumberOf(id);
 
-			act(name, "publish").andExpect(status().isConflict());
+			act(id, "publish").andExpect(status().isConflict());
 
-			assertThat(publicationNumberOf(name)).isEqualTo(number);
+			assertThat(publicationNumberOf(id)).isEqualTo(number);
 		}
 
 		@Test
-		void transitionOnUnknownNameIs404() throws Exception {
-			act("does-not-exist", "verify").andExpect(status().isNotFound());
-			actWithReason("does-not-exist", "delete", "x").andExpect(status().isNotFound());
+		void transitionOnUnknownIdIs404() throws Exception {
+			String unknown = UUID.randomUUID().toString();
+
+			act(unknown, "verify").andExpect(status().isNotFound());
+			actWithReason(unknown, "delete", "x").andExpect(status().isNotFound());
+		}
+
+		@Test
+		void transitionOnMalformedIdIs400() throws Exception {
+			act("not-a-uuid", "verify").andExpect(status().isBadRequest());
 		}
 
 		@Test
 		void unknownActionIsNotAnEndpoint() throws Exception {
-			String name = create("Grant");
+			String id = create("Grant");
 
-			act(name, "approve").andExpect(status().isNotFound());
+			act(id, "approve").andExpect(status().isNotFound());
 		}
 	}
 
@@ -440,12 +400,12 @@ class RequestApiIntegrationTest {
 
 		@Test
 		void recordsEveryStateChangeInOrder() throws Exception {
-			String name = create("Grant");
-			act(name, "verify");
-			editContent(name, "Updated");
-			actWithReason(name, "reject", "Incomplete");
+			String id = create("Grant");
+			act(id, "verify");
+			editContent(id, "Updated");
+			actWithReason(id, "reject", "Incomplete");
 
-			mvc.perform(get(BASE + "/{name}/audit-log", name))
+			mvc.perform(get(BASE + "/{id}/audit-log", id))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$", hasSize(3)))
 					.andExpect(jsonPath("$[0].action").value("CREATE"))
@@ -461,15 +421,25 @@ class RequestApiIntegrationTest {
 
 		@Test
 		void failedTransitionsAreNotRecorded() throws Exception {
-			String name = create("Grant");
-			act(name, "publish");
+			String id = create("Grant");
+			act(id, "publish");
 
-			mvc.perform(get(BASE + "/{name}/audit-log", name)).andExpect(jsonPath("$", hasSize(1)));
+			mvc.perform(get(BASE + "/{id}/audit-log", id)).andExpect(jsonPath("$", hasSize(1)));
 		}
 
 		@Test
-		void unknownNameIs404() throws Exception {
-			mvc.perform(get(BASE + "/{name}/audit-log", "does-not-exist")).andExpect(status().isNotFound());
+		void auditLogsOfRequestsWithTheSameNameAreSeparate() throws Exception {
+			String first = create("Grant");
+			String second = create("Grant");
+			act(first, "verify");
+
+			mvc.perform(get(BASE + "/{id}/audit-log", first)).andExpect(jsonPath("$", hasSize(2)));
+			mvc.perform(get(BASE + "/{id}/audit-log", second)).andExpect(jsonPath("$", hasSize(1)));
+		}
+
+		@Test
+		void unknownIdIs404() throws Exception {
+			mvc.perform(get(BASE + "/{id}/audit-log", UUID.randomUUID())).andExpect(status().isNotFound());
 		}
 	}
 
@@ -580,15 +550,16 @@ class RequestApiIntegrationTest {
 	@Test
 	void openApiDocumentIsServed() throws Exception {
 		mvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
-				.andExpect(jsonPath("$.paths['/api/requests/{name}/publish']").exists());
+				.andExpect(jsonPath("$.paths['/api/requests/{id}/publish']").exists());
 	}
 
+	/** Creates a request and returns its id. */
 	private String create(String name) throws Exception {
 		String json = mvc.perform(post(BASE).contentType(MediaType.APPLICATION_JSON)
 						.content("{\"name\":\"" + name + "\",\"content\":\"Body\"}"))
 				.andExpect(status().isCreated())
 				.andReturn().getResponse().getContentAsString();
-		return name;
+		return JsonPath.read(json, "$.id");
 	}
 
 	private void createMany(String prefix, int count) throws Exception {
@@ -597,33 +568,36 @@ class RequestApiIntegrationTest {
 		}
 	}
 
-	private ResultActions act(String name, String action) throws Exception {
-		return mvc.perform(post(BASE + "/{name}/{action}", name, action));
+	private ResultActions read(String id) throws Exception {
+		return mvc.perform(get(BASE + "/{id}", id));
 	}
 
-	private ResultActions actWithReason(String name, String action, String reason) throws Exception {
-		return mvc.perform(post(BASE + "/{name}/{action}", name, action).contentType(MediaType.APPLICATION_JSON)
+	private ResultActions act(String id, String action) throws Exception {
+		return mvc.perform(post(BASE + "/{id}/{action}", id, action));
+	}
+
+	private ResultActions actWithReason(String id, String action, String reason) throws Exception {
+		return mvc.perform(post(BASE + "/{id}/{action}", id, action).contentType(MediaType.APPLICATION_JSON)
 				.content("{\"reason\":\"" + reason + "\"}"));
 	}
 
-	private ResultActions editContent(String name, String content) throws Exception {
-		return mvc.perform(patch(BASE + "/{name}", name).contentType(MediaType.APPLICATION_JSON)
+	private ResultActions editContent(String id, String content) throws Exception {
+		return mvc.perform(patch(BASE + "/{id}", id).contentType(MediaType.APPLICATION_JSON)
 				.content("{\"content\":\"" + content + "\"}"));
 	}
 
-	private String publish(String name) throws Exception {
-		act(name, "verify").andExpect(status().isOk());
-		act(name, "accept").andExpect(status().isOk());
-		act(name, "publish").andExpect(status().isOk());
-		return name;
+	private String publish(String id) throws Exception {
+		act(id, "verify").andExpect(status().isOk());
+		act(id, "accept").andExpect(status().isOk());
+		act(id, "publish").andExpect(status().isOk());
+		return id;
 	}
 
-	private long publicationNumberOf(String name) throws Exception {
-		String json = browse(name).andReturn().getResponse().getContentAsString();
-		return ((Number) JsonPath.read(json, "$.items[0].publicationNumber")).longValue();
+	private long publicationNumberOf(String id) throws Exception {
+		String json = read(id).andReturn().getResponse().getContentAsString();
+		return ((Number) JsonPath.read(json, "$.publicationNumber")).longValue();
 	}
 
-	/** Browses by name; names in each test are distinct, so the match is the request itself. */
 	private ResultActions browse(String name) throws Exception {
 		return mvc.perform(get(BASE + "/browse").param("name", name));
 	}
