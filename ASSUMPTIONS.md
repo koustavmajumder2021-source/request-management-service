@@ -3,45 +3,53 @@
 Decisions taken where the specification leaves room for interpretation, with the reasoning behind
 each.
 
-## Lifecycle
+## Name reuse after delete or reject
 
-1. **The state diagram is the only source of allowed transitions.** Anything not drawn is refused
-   with `409 Conflict`, including repeating a step (e.g. verifying twice) or skipping one (e.g.
-   accepting a `CREATED` request).
-2. **`PUBLISHED`, `REJECTED` and `DELETED` are terminal.** The diagram has no arrows leaving them.
-3. **Delete is a soft delete.** The diagram models `DELETED` as a state, so a deleted request remains
-   stored, appears in browse results and keeps its audit log. Nothing is physically removed; that also
-   keeps the audit log complete. Deletion is exposed as `POST /{name}/delete`, not HTTP `DELETE`,
-   because it carries a mandatory body (the reason), and bodies on `DELETE` are poorly supported by
-   clients and proxies.
-4. **Delete is only allowed from `CREATED`, reject only from `VERIFIED` and `ACCEPTED`**, exactly as
-   drawn.
+1. **A request can be created again with the same name after it is deleted, but not after it is
+   rejected.**
 
-## Data and validation
-
-5. **Name** is required and at most 255 characters. It is stored exactly as sent (not trimmed);
-   a whitespace-only name counts as blank.
-6. **Name is the public identifier.** All operations on a single request (edit, every transition,
-   audit log) address it by name, so the name must be usable in a URL path: it must not contain
-   `/`, `\` or `;` and must not be `.` or `..`. Servers treat these specially in paths, so such a
-   request could be created but never reached. The numeric `id` remains the internal key. There is
-   no endpoint to read a single request; requests are read through `browse`, and every action
-   returns the updated request.
-7. **Name is unique among requests that are not deleted**, compared exactly (case-sensitive,
-   including spaces). Creating a duplicate returns `409 Conflict`. The service checks
-   for an active request with the same name before saving. A database unique constraint (on an
-   internal `active_name` column that is cleared on deletion) backs this up, so uniqueness also
-   holds when two identical requests are created at the same moment.
-8. **Reusing the name of a deleted request is allowed; of a rejected one, it is not.**
-   - If a request is **deleted**, a new request **can** be created with the same name.
-   - If a request is **rejected**, its name stays taken: creating another request with that name
-     returns `409 Conflict`. The same applies to **published** requests.
+   | Previous request with that name | Create a new request with the same name |
+   |---|---|
+   | **DELETED** | **Allowed** (`201 Created`) |
+   | **REJECTED** | **Not allowed** (`409 Conflict`, "A request named '…' already exists") |
+   | PUBLISHED | Not allowed (`409 Conflict`) |
+   | CREATED, VERIFIED or ACCEPTED (still active) | Not allowed (`409 Conflict`) |
 
    Deletion withdraws a request that should not have existed (it is only possible straight after
    creation, before verification), so its name is released. A rejection is a decision on a request
    that went through review; keeping its name reserved means the name always refers to that decided
    request and its audit log, and a rejected request cannot be resubmitted unnoticed under the same
    name. Published requests are final for the same reason.
+
+## Lifecycle
+
+2. **The state diagram is the only source of allowed transitions.** Anything not drawn is refused
+   with `409 Conflict`, including repeating a step (e.g. verifying twice) or skipping one (e.g.
+   accepting a `CREATED` request).
+3. **`PUBLISHED`, `REJECTED` and `DELETED` are terminal.** The diagram has no arrows leaving them.
+4. **Delete is a soft delete.** The diagram models `DELETED` as a state, so a deleted request remains
+   stored, appears in browse results and keeps its audit log. Nothing is physically removed; that also
+   keeps the audit log complete. Deletion is exposed as `POST /{name}/delete`, not HTTP `DELETE`,
+   because it carries a mandatory body (the reason), and bodies on `DELETE` are poorly supported by
+   clients and proxies.
+5. **Delete is only allowed from `CREATED`, reject only from `VERIFIED` and `ACCEPTED`**, exactly as
+   drawn.
+
+## Data and validation
+
+6. **Name** is required and at most 255 characters. It is stored exactly as sent (not trimmed);
+   a whitespace-only name counts as blank.
+7. **Name is the public identifier.** All operations on a single request (edit, every transition,
+   audit log) address it by name, so the name must be usable in a URL path: it must not contain
+   `/`, `\` or `;` and must not be `.` or `..`. Servers treat these specially in paths, so such a
+   request could be created but never reached. The numeric `id` remains the internal key. There is
+   no endpoint to read a single request; requests are read through `browse`, and every action
+   returns the updated request.
+8. **Name is unique among requests that are not deleted**, compared exactly (case-sensitive,
+   including spaces). Creating a duplicate returns `409 Conflict`. The service checks
+   for an active request with the same name before saving. A database unique constraint (on an
+   internal `active_name` column that is cleared on deletion) backs this up, so uniqueness also
+   holds when two identical requests are created at the same moment.
 9. **Addressing by name** targets the current request with that name. If the name only belongs to
    deleted requests, it targets the most recently deleted one, so its audit log stays reachable
    until the name is reused. After reuse, older deleted requests with that name are still stored and

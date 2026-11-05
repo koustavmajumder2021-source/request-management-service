@@ -13,6 +13,8 @@ state machine; each change is validated against it and recorded in an audit log.
 
 - Name and content are mandatory on creation. The name is unique and identifies the request in
   every URL; it cannot be changed.
+- A request with the same name can be created again after the previous one is **deleted**, but not
+  after it is **rejected** (or published); see [ASSUMPTIONS.md](ASSUMPTIONS.md).
 - Content can be edited only in `CREATED` and `VERIFIED`.
 - Deleting and rejecting require a reason.
 - Publishing assigns a unique numeric publication number.
